@@ -94,7 +94,7 @@ def main():
     save_path = f"iv_curve_{timestamp}.png"
     plt.savefig(save_path)
     print(f"Saved: {save_path}")
-    plt.show()
+    plt.close()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,36 @@
+# Config for IV curve measurement only. It is a separate file from the
+# production device_config.toml, so placing it changes nothing in operation.
+#
+# Wiring determined on 2026-09-04 by sweeping one mixer at a time while
+# recording all 16 AD channels:
+#     v1 -> ch9 / ch10,  h1 -> ch11 / ch12,  h2 -> ch13 / ch14,  v2 -> ch15 / ch16
+#     (odd = current monitor, even = voltage monitor)
+#
+# Inline tables { } must stay on one line: a newline makes tomli fail.
+
+[sis_bias_setter]
+_ = "CPZ3346"
+rsw_id = 0
+# 0.94/3, same as production. Command in mV times this = DA output in volts.
+# The comment "1/(3*0.94)" in the production file is wrong; the value is right.
+conversion_factor = 0.3133333333333333
+channel = { v1 = "ch5", v2 = "ch8", h1 = "ch6", h2 = "ch7" }
+range = { v1 = "10V", v2 = "10V", h1 = "10V", h2 = "10V" }
+tuned = { v1 = 6.9, v2 = 6.5, h1 = 6.5, h2 = 7.4 }
+
+[sis_bias_reader]
+_ = "CPZ3177"
+rsw_id = 0
+all_ch_num = 8
+# Registration order is readout order. During the sweep the residue of the last
+# channel in the list landed on the first one at 0.81x, so the voltage channels,
+# which swing 2.86 V against 0.2-0.5 V for the current ones, are never last.
+channel = { v1_v = "ch10", v1 = "ch9", v2_v = "ch16", v2 = "ch15", h1_v = "ch12", h1 = "ch11", h2_v = "ch14", h2 = "ch13" }
+ch_range = { v1_v = "10V", v1 = "10V", v2_v = "10V", v2 = "10V", h1_v = "10V", h1 = "10V", h2_v = "10V", h2 = "10V" }
+# Current monitors -500 uA/V, voltage monitors -2.80 mV/V (measured 2026-09-04).
+# The monitor gains differ, so a single scalar cannot scale both.
+conversion_factor = { v1_v = -2.80, v1 = -500, v2_v = -2.80, v2 = -500, h1_v = -2.80, h1 = -500, h2_v = -2.80, h2 = -500 }
+ave_num = 10
+smpl_freq = 1000
+smpl_num = 15
+single_diff = "DIFF"

@@ -1,0 +1,23 @@
+# Temporary config for channel identification. device_config.toml is left alone.
+# The reader registers every AD channel under the placeholder names c1..c16,
+# with a factor of 1.0 so the raw voltage comes back unchanged.
+# Inline tables { } must stay on one line: a newline makes tomli fail.
+
+[sis_bias_setter]
+_ = "CPZ3346"
+rsw_id = 0
+conversion_factor = 0.3133333333333333  # = 0.94/3, same as production
+channel = { v1 = "ch5", v2 = "ch8", h1 = "ch6", h2 = "ch7" }
+range = { v1 = "10V", h1 = "10V", h2 = "10V", v2 = "10V" }
+tuned = { v1 = 6.9, h1 = 6.5, v2 = 6.5, h2 = 7.4 }
+
+[sis_bias_reader]
+_ = "CPZ3177"
+rsw_id = 0
+conversion_factor = 1.0
+channel = { c1 = "ch1", c2 = "ch2", c3 = "ch3", c4 = "ch4", c5 = "ch5", c6 = "ch6", c7 = "ch7", c8 = "ch8", c9 = "ch9", c10 = "ch10", c11 = "ch11", c12 = "ch12", c13 = "ch13", c14 = "ch14", c15 = "ch15", c16 = "ch16" }
+ch_range = { c1 = "10V", c2 = "10V", c3 = "10V", c4 = "10V", c5 = "10V", c6 = "10V", c7 = "10V", c8 = "10V", c9 = "10V", c10 = "10V", c11 = "10V", c12 = "10V", c13 = "10V", c14 = "10V", c15 = "10V", c16 = "10V" }
+ave_num = 10
+smpl_freq = 1000
+smpl_num = 15
+single_diff = "DIFF"

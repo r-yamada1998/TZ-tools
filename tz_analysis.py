@@ -12,10 +12,18 @@ comparable with ROS-era results:
 
 Usage:
     python tz_analysis.py <run_directory>
+    python tz_analysis.py irr-map <output_directory> <irr_run_dir> [<irr_run_dir> ...]
 
 The run directory is what a measurement script wrote. Its meta.json says which
 kind of measurement it holds; the result is written next to the raw data as
 result.csv, plus a PNG when matplotlib is available.
+
+irr-map combines several irr_measure runs taken at different SIS biases into
+IRR and Trx maps per polarization (ROS: irr_map_multi_data_integration.ipynb).
+
+In every map the color and the number written in a cell come from the same
+array element. Two ROS notebooks got this wrong in different ways: the Trx map
+wrote transposed numbers, and the IRR map could shift its colors by a column.
 """
 
 from __future__ import annotations
@@ -138,6 +146,57 @@ def _pyplot():
         return None
 
 
+def to_grid(x, y, z, decimals: int = 4):
+    """
+    Put scattered (x, y, z) on a grid. Axes are the distinct values actually
+    measured, so a float step can never create an extra row or column (the
+    ROS IRR notebook built its axes with numpy.arange and duplicated one).
+    Returns (xs, ys, grid) with grid[iy, ix].
+    """
+    x = np.round(np.asarray(x, dtype=float), decimals)
+    y = np.round(np.asarray(y, dtype=float), decimals)
+    xs, ys = np.unique(x), np.unique(y)
+    grid = np.full((len(ys), len(xs)), np.nan)
+    grid[np.searchsorted(ys, y), np.searchsorted(xs, x)] = z
+    return xs, ys, grid
+
+
+def _edges(c):
+    """Cell edges around sorted centers c (spacing may be uneven)."""
+    if len(c) == 1:
+        return np.array([c[0] - 0.05, c[0] + 0.05])
+    mid = (c[1:] + c[:-1]) / 2
+    return np.concatenate([[c[0] - (mid[0] - c[0])], mid, [c[-1] + (c[-1] - mid[-1])]])
+
+
+def draw_map(ax, xs, ys, grid, vmin, vmax, label, fmt="{:.0f}", numbers=True):
+    """
+    Color map with the value written in each cell.
+
+    Colors and numbers are drawn from the same grid[iy, ix], cell by cell, so
+    they cannot disagree. (The ROS Trx notebook wrote the numbers from the
+    transposed array: each number belonged to the cell mirrored across the
+    diagonal.)
+    """
+    im = ax.pcolormesh(_edges(xs), _edges(ys), grid, cmap="jet", vmin=vmin, vmax=vmax)
+    ax.figure.colorbar(im, ax=ax, label=label)
+    if numbers:
+        size = 10 if grid.size <= 150 else 6
+        for iy, yv in enumerate(ys):
+            for ix, xv in enumerate(xs):
+                v = grid[iy, ix]
+                if np.isfinite(v):
+                    ax.text(xv, yv, fmt.format(v), ha="center", va="center", fontsize=size,
+                            color="white", fontweight="bold",
+                            path_effects=_outline())
+    return im
+
+
+def _outline():
+    from matplotlib.patheffects import withStroke
+    return [withStroke(linewidth=1.5, foreground="black")]
+
+
 # ----------------------------------------------------------------------------
 # Per-measurement analysis
 # ----------------------------------------------------------------------------
@@ -180,16 +239,9 @@ def analyze_trx_map(run_dir, meta, rows):
     plt = _pyplot()
     if plt is None:
         return
-    u1, u2 = np.unique(b1.round(4)), np.unique(b2.round(4))
-    grid = np.full((len(u2), len(u1)), np.nan)
-    for a, b, t in zip(b1.round(4), b2.round(4), trx):
-        grid[np.searchsorted(u2, b), np.searchsorted(u1, a)] = t
-    fig, ax = plt.subplots(figsize=(8, 6.5))
-    d1 = (u1[1] - u1[0]) / 2 if len(u1) > 1 else 0.05
-    d2 = (u2[1] - u2[0]) / 2 if len(u2) > 1 else 0.05
-    im = ax.imshow(grid, origin="lower", aspect="auto", cmap="jet", vmin=50, vmax=200,
-                   extent=[u1[0] - d1, u1[-1] + d1, u2[0] - d2, u2[-1] + d2])
-    fig.colorbar(im, ax=ax, label="Trx [K]")
+    xs, ys, grid = to_grid(b1, b2, trx)
+    fig, ax = plt.subplots(figsize=(12, 9.5))
+    draw_map(ax, xs, ys, grid, 50, 200, "Trx [K]")
     ax.set_xlabel("SIS Bias1 [mV]  (" + "+".join(meta["bias1_names"]) + ")")
     ax.set_ylabel("SIS Bias2 [mV]  (" + "+".join(meta["bias2_names"]) + ")")
     ax.set_title(f"Trx map {meta['band']}")
@@ -228,35 +280,97 @@ def analyze_loatt(run_dir, meta, rows):
     plt.close(fig)
 
 
-def analyze_irr(run_dir, meta, rows):
-    """irr_measure: HOT, COLD, USB and LSB test signal, four bands each."""
+def irr_values(meta, rows):
+    """
+    IRR and Trx of both polarizations from one irr_measure run.
+    Returns {pol: dict(irr_usb_dB, irr_lsb_dB, trx_usb_K, trx_lsb_K)}.
+    """
     thot, tcold = meta["thot"], meta["tcold"]
     by = {(r["load"], r["band"]): r["trace"] for r in rows}
-    out = []
+    result = {}
     for pol in ["H", "V"]:
         u, l = pol + "U", pol + "L"
         hot_u, cold_u = by[("hot", u)], by[("cold", u)]
         hot_l, cold_l = by[("hot", l)], by[("cold", l)]
+
         # Test signal level is read at the peak of (signal - hot), as in the
         # ROS notebook. It used scipy argrelmax(order=300) on 461 points,
         # which in practice is the global maximum; argmax gives the same.
         def peak(band, test):
             tr = by[(test, band)]
             return tr[int(np.argmax(tr - by[("hot", band)]))]
-        gu_u = peak(u, "usbtest")
-        gl_u = peak(l, "usbtest")
-        gu_l = peak(u, "lsbtest")
-        gl_l = peak(l, "lsbtest")
+
         params_db = [np.mean(hot_u), np.mean(cold_u), np.mean(hot_l), np.mean(cold_l),
-                     gu_u, gl_u, gu_l, gl_l]
+                     peak(u, "usbtest"), peak(l, "usbtest"), peak(u, "lsbtest"), peak(l, "lsbtest")]
         r_u, r_l = irr_linear(*dbm_to_mw(params_db))
-        trx_u = hotcold_trx(hot_u, cold_u, thot, tcold)
-        trx_l = hotcold_trx(hot_l, cold_l, thot, tcold)
-        print(f"{pol}-pol: IRR_USB = {10 * np.log10(r_u):.2f} dB, IRR_LSB = {10 * np.log10(r_l):.2f} dB, "
-              f"Trx {u} = {trx_u:.1f} K, Trx {l} = {trx_l:.1f} K")
-        out.append([pol, round(10 * np.log10(r_u), 3), round(10 * np.log10(r_l), 3),
-                    round(trx_u, 2), round(trx_l, 2)])
+        result[pol] = {
+            "irr_usb_dB": 10 * np.log10(r_u),
+            "irr_lsb_dB": 10 * np.log10(r_l),
+            "trx_usb_K": hotcold_trx(hot_u, cold_u, thot, tcold),
+            "trx_lsb_K": hotcold_trx(hot_l, cold_l, thot, tcold),
+        }
+    return result
+
+
+def analyze_irr(run_dir, meta, rows):
+    """irr_measure: HOT, COLD, USB and LSB test signal, four bands each."""
+    res = irr_values(meta, rows)
+    out = []
+    for pol, r in res.items():
+        print(f"{pol}-pol: IRR_USB = {r['irr_usb_dB']:.2f} dB, IRR_LSB = {r['irr_lsb_dB']:.2f} dB, "
+              f"Trx {pol}U = {r['trx_usb_K']:.1f} K, Trx {pol}L = {r['trx_lsb_K']:.1f} K")
+        out.append([pol] + [round(r[k], 3) for k in ("irr_usb_dB", "irr_lsb_dB", "trx_usb_K", "trx_lsb_K")])
     write_result(run_dir, ["pol", "irr_usb_dB", "irr_lsb_dB", "trx_usb_K", "trx_lsb_K"], out)
+
+
+def irr_map(run_dirs, out_dir) -> None:
+    """
+    Combine several irr_measure runs, taken at different SIS biases, into
+    maps: for each polarization, IRR and Trx of USB and LSB over
+    (bias1, bias2) = (v1, v2) or (h1, h2). Port of the ROS notebook
+    irr_map_multi_data_integration.ipynb.
+    """
+    out_dir = pathlib.Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    table = []
+    for d in run_dirs:
+        meta, rows = load_run(pathlib.Path(d))
+        b = meta["bias_mV"]
+        for pol, r in irr_values(meta, rows).items():
+            n1, n2 = ("v1", "v2") if pol == "V" else ("h1", "h2")
+            table.append([str(d), pol, b[n1], b[n2]] + [r[k] for k in
+                         ("irr_usb_dB", "irr_lsb_dB", "trx_usb_K", "trx_lsb_K")])
+    header = ["run", "pol", "bias1_mV", "bias2_mV", "irr_usb_dB", "irr_lsb_dB", "trx_usb_K", "trx_lsb_K"]
+    with (out_dir / "irr_map.csv").open("w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(header)
+        w.writerows(table)
+    print(f'Table: "{out_dir / "irr_map.csv"}"')
+
+    plt = _pyplot()
+    if plt is None:
+        return
+    for pol in ["H", "V"]:
+        rows = [t for t in table if t[1] == pol]
+        if not rows:
+            continue
+        x = [t[2] for t in rows]
+        y = [t[3] for t in rows]
+        fig, axes = plt.subplots(2, 2, figsize=(16, 13))
+        for ax, col, title, lim, unit, fmt in [
+            (axes[0, 0], 5, "LSB IRR", (0, 25), "IRR [dB]", "{:.1f}"),
+            (axes[0, 1], 4, "USB IRR", (0, 25), "IRR [dB]", "{:.1f}"),
+            (axes[1, 0], 7, "LSB Trx", (50, 200), "Trx [K]", "{:.0f}"),
+            (axes[1, 1], 6, "USB Trx", (50, 200), "Trx [K]", "{:.0f}"),
+        ]:
+            xs, ys, grid = to_grid(x, y, [t[col] for t in rows])
+            draw_map(ax, xs, ys, grid, lim[0], lim[1], unit, fmt=fmt)
+            n1, n2 = ("v1", "v2") if pol == "V" else ("h1", "h2")
+            ax.set_xlabel(f"SIS Bias1 [mV]  ({n1})")
+            ax.set_ylabel(f"SIS Bias2 [mV]  ({n2})")
+            ax.set_title(f"{pol}-pol. {title}")
+        fig.savefig(out_dir / f"irr_map_{pol}.png", dpi=100, bbox_inches="tight")
+        plt.close(fig)
 
 
 ANALYZERS = {
@@ -275,6 +389,9 @@ def analyze(run_dir) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+    if len(sys.argv) >= 4 and sys.argv[1] == "irr-map":
+        irr_map(sys.argv[3:], sys.argv[2])
+    elif len(sys.argv) == 2:
+        analyze(sys.argv[1])
+    else:
         raise SystemExit(__doc__)
-    analyze(sys.argv[1])

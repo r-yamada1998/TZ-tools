@@ -1,0 +1,88 @@
+# Config for the measurement scripts ported from the ROS system
+# (yfactor_chopper.py, yfactor_hotcold.py, trx_map.py, loatt_search.py,
+# irr_measure.py).
+#
+# Purpose: reproduce what the ROS system did, so that the bias values found
+# and documented in the ROS era (manual, acceptance review) mean the same
+# physical setting here. Everything below was checked against the ROS sources
+# and the ROS logs of 2025-09 (see docs/2026-10-20_ros_vs_new_sis_bias.md in
+# the TZsystem-new workspace).
+#
+# The running setup is left alone: ~/tz_workspace/device_config.toml and the
+# installed tz_controller are not read or modified by these scripts.
+
+[sis_bias_setter]
+_ = "CPZ3346"
+rsw_id = 0
+# Same as the ROS writer (sis_bias_v_tz2019_dev_writer.conf: cmd/(3*0.94)),
+# confirmed in the 2025-09 logs: DA output = command / 2.82. With this the
+# physical junction voltage equals the command within 1 %.
+conversion_factor = 0.3546099290780142
+# Same as the ROS launch that actually ran from 2020-05 to the end of ROS
+# operation. Note: v1 and h2 here are swapped relative to the ROS *reader*
+# naming and to the new system's device_config.toml. Which naming matches the
+# physical polarization is not settled yet; until then these scripts follow
+# the ROS writer, so that ROS-era values reproduce.
+channel = { v1 = "ch7", h1 = "ch6", h2 = "ch5", v2 = "ch8" }
+# ROS used "5V". The range only sets the resolution of the DA output (5 mV
+# here, 0.014 mV at the junction), not its value, so "10V" reproduces ROS just
+# as well. It is kept equal to ~/tz_workspace/device_config.toml on purpose:
+# changing the range of a channel that is already outputting reinterprets the
+# held code for an instant, and going from 5V to 10V would double the bias.
+range = { v1 = "10V", h1 = "10V", h2 = "10V", v2 = "10V" }
+# ROS operating values for season 2025-2026 (set 2025-10-13,
+# set_sis_vol_direction.py 6.4 7.3 7.3 6.3).
+tuned = { v1 = 6.4, h1 = 7.3, h2 = 7.3, v2 = 6.3 }
+
+[local_attenuator]
+_ = "GPVDC15"
+host = "192.168.223.102"
+
+# ROS launch: loatt_h -> GPIB port 4, loatt_v -> GPIB port 5.
+# ROS operating values (2025-10-13): H = 23, V = 23 [mA].
+[local_attenuator.channels]
+4 = { att_current = 23.0 }
+5 = { att_current = 23.0 }
+
+[spectrum_analyzer]
+_ = "KeysightN9343C"
+host = "192.168.223.105"
+port = 5025
+
+[spectrum_analyzer.defaults]
+center = "6GHz"
+span = "0MHz"
+rbw = "300Hz"
+vbw = "300Hz"
+scale_type = "LOG"
+average_onoff = "OFF"
+
+[if_switch]
+_ = "agilent11713B"
+host = "192.168.223.104"
+port = 10
+
+# Phase Matrix FSW-0020, the test signal source for IRR measurement.
+# tz_controller has no class for it yet; irr_measure.py drives it through
+# ogameasure directly, as the ROS node fsw0020.py did.
+[irr_signal_generator]
+_ = "FSW0020"
+host = "192.168.223.101"
+port = 10001
+
+[measurement]
+# ROS switch_writer.conf: band name -> 87104B path number
+if_switch_path = { HU = 105, HL = 106, VU = 107, VL = 108 }
+# ROS LO attenuator ports by polarization
+loatt_port = { H = 4, V = 5 }
+# Load temperatures used by every ROS analysis notebook [K]
+thot = 300.0
+tcold = 77.0
+# Hard limits on any SIS bias command [mV], checked before output
+bias_min = 0.0
+bias_max = 9.0
+# Spectrum analyzer settings per measurement. The ROS scripts never set the
+# analyzer; the operator did it by hand with set_sa_param.py. These are the
+# settings the ROS analysis notebooks assume.
+sa_chopper = { center = "6GHz", span = "0MHz", rbw = "300Hz", vbw = "300Hz", scale_type = "LOG", average_onoff = "OFF" }
+sa_irr = { center = "6GHz", span = "0.5MHz", scale_type = "LOG", average_onoff = "OFF" }

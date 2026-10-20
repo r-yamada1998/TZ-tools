@@ -23,205 +23,238 @@
           page-break-inside: avoid; }
   .warn { border-left: 3pt solid #b00020; background: #fdecee; padding: 5pt 9pt; margin: 8pt 0;
           page-break-inside: avoid; }
-  .toc li { margin: 1pt 0; }
+  ol.steps li, ul li { margin: 2pt 0; }
 </style>
 </head>
 <body>
 
 <h1>TZ受信機 性能評価スクリプト 使い方マニュアル</h1>
-<div class="sub">対象: TZ-tools ブランチ port-ros-measurements ／ 版 0.1（2026-10-21）／ 実機での動作は未確認</div>
+<div class="sub">版 0.2（2026-10-21）／ 実機での動作は未確認</div>
 
-<ol class="toc">
-  <li>このマニュアルの範囲</li>
-  <li>用語</li>
-  <li>準備</li>
-  <li>共通の使い方</li>
-  <li>各スクリプト</li>
-  <li>解析（rx_performance_analysis.py）</li>
-  <li>疑似機器での試運転（<code>--dry-run</code>）</li>
-  <li>設定ファイル device_config_ros.toml</li>
-  <li>注意点と未確定事項</li>
-  <li>改訂履歴</li>
-</ol>
-
-<h2>1. このマニュアルの範囲</h2>
-<p>TZ受信機の性能（受信機雑音温度 Trx とイメージ抑圧比 IRR）を測るスクリプト群の使い方を説明する。
-ROSで動いていた旧システムのスクリプトを、ROSを使わない新システム（tz_controller）の上に移植したもの。
-観測データの解析には使わない。</p>
-
+<h2>1. このマニュアルについて</h2>
+<p>TZ受信機の性能を測るスクリプト群の使い方を説明する。測るのは主に次の2つで、観測データの解析には使わない。</p>
 <table>
-<tr><th>旧スクリプト（ROS）</th><th>新スクリプト</th><th>何をするか</th></tr>
-<tr><td>yfactor_chopper_directon.py</td><td>yfactor_chopper.py</td><td>チョッパを回したまま、IF 4系統の Trx を測る</td></tr>
-<tr><td>yfactor_sa_direction.py</td><td>yfactor_hotcold.py</td><td>HOT と COLD を手で入れ替えて、IF 4系統の Trx を測る</td></tr>
-<tr><td>yfactor_with_search_sis_vol_direction-ver2.py<br>同 -ver2_auto.py</td><td>trx_map.py<br>trx_map.py <code>--auto</code></td><td>SISバイアス2つを格子状に振り、1系統の Trx マップを作る</td></tr>
-<tr><td>yfactor_with_search_loatt_level_direction-ver2.py</td><td>loatt_search.py</td><td>LO減衰器の電流を振り、HL と VL の Trx を測る</td></tr>
-<tr><td>irr_measurement2.py</td><td>irr_measure.py</td><td>1組のSISバイアスで、両偏波の IRR と Trx を測る</td></tr>
-<tr><td>解析用 Jupyter notebook 各種</td><td>rx_performance_analysis.py</td><td>上の測定結果から Trx、IRR、マップを計算する</td></tr>
+<tr><th>量</th><th>意味</th></tr>
+<tr><td>受信機雑音温度 Trx</td><td>受信機そのものが出す雑音の大きさを温度で表したもの。低いほど良い</td></tr>
+<tr><td>イメージ抑圧比 IRR</td><td>TZ は2つのサイドバンド（USB と LSB）を分けて出力する受信機（2SB 受信機）である。片方のサイドバンドの出力に、もう片方の信号がどれだけ漏れずに済んでいるかの比。大きいほど良い</td></tr>
 </table>
+<p>これらは、SISミクサにかけるバイアス電圧と、LO（局部発振信号）の強さを決める LO減衰器の電流によって変わる。
+そのため、この2つを振りながら Trx と IRR を測り、良い組み合わせ（運用値）を決める。</p>
+<p>スクリプトは、以前 ROS 上で動いていたもの（旧システム）を、ROS を使わない現在の制御ソフト（tz_controller）の上に移植したものである。
+測定の手順と解析の計算は旧システムと同じにしてあり、旧システムの結果とそのまま比べられる。</p>
 
 <h2>2. 用語</h2>
 <table>
-<tr><th>呼び方</th><th>中身</th></tr>
-<tr><td>旧システム</td><td>ROSで動いていた制御一式（2019-2025）</td></tr>
-<tr><td>新システム</td><td>tz_controller（r-yamada1998/TZ-controller）と TZ-tools。ROSなしで FAC 上で動く</td></tr>
-<tr><td>制御PC</td><td>hinotoritz。Anapico SG（1st LO）用のコードは ~/nk にある</td></tr>
-<tr><td>FAC</td><td>hinotoritz-fac。DAボードとADボードが刺さっている。新システムは ~/tz_workspace で動く</td></tr>
-<tr><td>DAボード</td><td>CPZ-3346。SISバイアスを出す。DA ch5 から ch8 を使う</td></tr>
-<tr><td>ADボード</td><td>CPZ-3177。SISのモニタを読む。AD ch9 から ch16 を使う</td></tr>
-<tr><td>素子名</td><td>v1, h1, h2, v2。SISミクサ4本の名前（8章の対応表を参照）</td></tr>
-<tr><td>IF系統</td><td>HU, HL, VU, VL（偏波 H/V と サイドバンド U/L）</td></tr>
-<tr><td>Bias1, Bias2</td><td>trx_map.py で振る2つのバイアス。Bias1 は v1 と h1、Bias2 は v2 と h2 を同時に動かす（旧システムと同じ）</td></tr>
+<tr><th>用語</th><th>意味</th></tr>
+<tr><td>旧システム</td><td>ROS で動いていた制御一式（2019-2025）。旧スクリプトは制御PCで動いていた</td></tr>
+<tr><td>新システム</td><td>tz_controller と TZ-tools。ROS なしで FAC 上で動く</td></tr>
+<tr><td>制御PC</td><td>TZ の運用で VNC から入る PC。1st LO の信号発生器（Anapico SG）はここから操作する</td></tr>
+<tr><td>FAC</td><td>DA/AD ボードが刺さっていて、SISバイアスを直接扱う PC。このスクリプト群は FAC の ~/tz_workspace で動かす</td></tr>
+<tr><td>素子名</td><td>SISミクサ4本の名前 v1, h1, h2, v2。v/h は偏波、1/2 は1つの偏波を受ける2本のミクサを表す</td></tr>
+<tr><td>IF系統</td><td>受信機の出力4本。HU, HL, VU, VL（偏波 H/V とサイドバンド U/L の組み合わせ）。IFスイッチでどれか1本をスペアナに送る</td></tr>
+<tr><td>HOT と COLD</td><td>受信機に見せる2つの基準の温度。HOT は室温の吸収体（300 K とする）、COLD は液体窒素に浸した吸収体（77 K とする）</td></tr>
+<tr><td>Y-factor 法</td><td>HOT を見たときと COLD を見たときの出力の比 Y から Trx を求める方法。Trx = (300 − 77 Y)/(Y − 1)</td></tr>
+<tr><td>チョッパー</td><td>HOT と COLD を一定の周期で交互に見せる回転板（チョッパーホイール）。スペアナのゼロスパン表示に、HOT と COLD の出力が交互に並んだ波形が出る</td></tr>
+<tr><td>スライダー</td><td>HOT と COLD を手で切り替える方式。Old MMC スイッチで Hot/Cold を選ぶ</td></tr>
+<tr><td>Bias1, Bias2</td><td>Trx マップで振る2つのバイアス。Bias1 は v1 と h1、Bias2 は v2 と h2 に同じ値を入れる（両偏波を同時に動かす）</td></tr>
 </table>
 
-<h2>3. 準備</h2>
+<h2>3. スクリプトの一覧</h2>
+<table>
+<tr><th>新スクリプト</th><th>何をするか</th><th>HOT/COLD</th><th>旧スクリプト</th></tr>
+<tr><td>trx_map.py</td><td>Bias1 と Bias2 を格子状に振り、1つの IF系統の Trx マップを作る</td><td>チョッパー</td><td>yfactor_with_search_sis_vol_direction-ver2.py、同 -ver2_auto.py</td></tr>
+<tr><td>loatt_search.py</td><td>LO減衰器の電流を振り、HL と VL の Trx を測る</td><td>チョッパー</td><td>yfactor_with_search_loatt_level_direction-ver2.py</td></tr>
+<tr><td>irr_measure.py</td><td>1組のバイアスで、両偏波の IRR と Trx を測る</td><td>スライダー</td><td>irr_measurement2.py</td></tr>
+<tr><td>yfactor_chopper.py</td><td>4つの IF系統の Trx を測る</td><td>チョッパー</td><td>yfactor_chopper_directon.py</td></tr>
+<tr><td>yfactor_hotcold.py</td><td>4つの IF系統の Trx と、その周波数特性を測る</td><td>スライダー</td><td>yfactor_sa_direction.py</td></tr>
+<tr><td>rx_performance_analysis.py</td><td>上の測定結果から Trx、IRR、マップを計算する（測定の最後に自動で動く）</td><td>なし</td><td>解析用の Jupyter notebook</td></tr>
+</table>
+
+<h3>運用値を決めるときの流れ</h3>
+<ol class="steps">
+  <li>TZ をチューニングする（立ち上げ手順。LO減衰器はそのときの値）</li>
+  <li><b>trx_map.py</b> で、IF系統ごとに SISバイアスの Trx マップを作り、Trx の低い Bias1, Bias2 を選ぶ</li>
+  <li>選んだバイアスで <b>loatt_search.py</b> を走らせ、Trx の低い LO減衰器の電流を選ぶ</li>
+  <li>選んだバイアスの付近で、バイアスを少しずつ変えて <b>irr_measure.py</b> を何回か走らせ、<b>irr-map</b> で IRR のマップを作る</li>
+  <li>IRR が 10 dB を超え、かつ Trx が低いバイアスを運用値とする</li>
+  <li>運用値でチューニングし直し、<b>yfactor_chopper.py</b> と <b>yfactor_hotcold.py</b> で最終的な Trx を測る</li>
+</ol>
+
+<h2>4. 測定の準備</h2>
+<p>光学系とスペアナの準備は、TZマニュアル（立ち上げ/シャットダウン/性能評価測定編）の「性能評価測定前準備と測定の流れ」に従う。要点を下にまとめる。</p>
+
+<h3>4.1 共通</h3>
 <ul>
-  <li>FAC の ~/tz_workspace に、TZ-tools の次のファイルを置く:
-    yfactor_chopper.py, yfactor_hotcold.py, trx_map.py, loatt_search.py, irr_measure.py,
-    rx_performance_common.py, rx_performance_analysis.py, device_config_ros.toml</li>
-  <li>tz_controller が入った環境で動かす（<code>uv run python ...</code>）。必要なパッケージ: numpy、ogameasure、pyinterface、matplotlib（図を作る場合）</li>
-  <li>本番の ~/tz_workspace/device_config.toml と、インストール済みの tz_controller は読まないし書き換えない</li>
-  <li>測定ごとの前提（チョッパ、LO、黒体）は5章の各スクリプトの項を見る</li>
+  <li>Trx を求める測定では液体窒素を使う。液体窒素の入った容器を Cold Port に置き、容器内の吸収体が全部つかるまで入れる</li>
+  <li>容器を覆うビニールに水滴がつくと COLD の温度が狂う。測定中もときどき確認する（10月以降はつかないことが多い）</li>
 </ul>
 
-<h2>4. 共通の使い方</h2>
-<h3>実行の形</h3>
-<p>旧システムと同じく、スクリプト名の後に引数を並べる。旧システムで対話入力していた値の多くは、引数で渡す形にした。</p>
+<h3>4.2 チョッパーを使う測定（trx_map, loatt_search, yfactor_chopper）</h3>
+<ol class="steps">
+  <li>観測棟で LD1 の Hot を入れる（ミラー#4 手前の吸収体）</li>
+  <li>第四反射鏡を OLD にする</li>
+  <li>Old MMC スイッチを Rotate と Cold にする</li>
+  <li>Old Beam Mirror 切り替えパネル: #7 Total Reflection、#8 86/40G Separation（filter）または House（through）、#9 どれでもよい</li>
+  <li>TZ をチューニングする</li>
+  <li>スペアナでゼロスパン表示に HOT と COLD が交互に並んだ波形が出ていることを確かめる。Att. や Ref. は見やすいよう適宜変える</li>
+</ol>
+
+<h3>4.3 スライダーを使う測定（yfactor_hotcold）</h3>
+<ol class="steps">
+  <li>Old MMC スイッチを R にする</li>
+  <li>Old Beam Mirror 切り替えパネルはチョッパーと同じ</li>
+  <li>TZ をチューニングする</li>
+  <li>スクリプトが HOT/COLD を求めてきたら、Old MMC を Hot/Cold に切り替える</li>
+</ol>
+
+<h3>4.4 IRR 測定（irr_measure）</h3>
+<ol class="steps">
+  <li>Old MMC スイッチを R にする</li>
+  <li>Old Beam Mirror 切り替えパネル: #7 Total Reflection、#8 House（through）、#9 どれでもよい</li>
+  <li>TZ をチューニングする</li>
+  <li>試験信号（Phase Matrix SG）が出てスペアナに見えることを、最初に一度確かめる</li>
+  <li>スクリプトが HOT/COLD を求めてきたら、Old MMC を Hot/Cold に切り替える</li>
+</ol>
+
+<h3>4.5 スペアナの設定</h3>
+<p>スクリプトが自動で次の設定にする（TZマニュアルと同じ）。Att. と Ref. は変えないので、必要なら事前に手で合わせる。</p>
+<table>
+<tr><th>測定</th><th>Center</th><th>Span</th><th>RBW</th><th>VBW</th><th>Sweep</th><th>平均</th></tr>
+<tr><td>チョッパー</td><td>6 GHz</td><td>0 Hz</td><td>1 MHz</td><td>300 Hz</td><td>300 ms</td><td>なし</td></tr>
+<tr><td>スライダー</td><td>6 GHz</td><td>4 GHz</td><td>1 MHz</td><td>1 MHz</td><td>自動</td><td>20回</td></tr>
+<tr><td>IRR</td><td>6 GHz</td><td>500 kHz</td><td>300 Hz</td><td>10 Hz</td><td>自動</td><td>5回</td></tr>
+</table>
+<p>平均をとる測定では、IF系統や HOT/COLD を切り替えるたびに平均をやり直させ、決められた回数の掃引が終わってから記録する。
+切り替え前のデータが平均に混ざらないようにするためである（旧システムでは、平均の完了を人が目で確かめていた）。</p>
+
+<h2>5. 共通の使い方</h2>
+<h3>5.1 実行の形</h3>
+<p>FAC に入り、~/tz_workspace でスクリプト名の後に引数を並べて実行する。</p>
 <pre>cd ~/tz_workspace
 uv run python trx_map.py HL --bias1 6.0 8.0 21 --bias2 6.0 8.0 21</pre>
-<p>どのスクリプトも <code>-h</code> を付けると引数の一覧が出る。</p>
+<p>どのスクリプトも <code>-h</code> を付けると引数の一覧が出る。旧スクリプトで対話入力していた値の多くは、引数で渡す形にした。
+人の操作（HOT/COLD の切り替えなど）が必要なところでは、旧スクリプトと同じく画面に指示が出て、<code>y</code> の入力を待つ。</p>
 
-<h3>共通オプション</h3>
+<h3>5.2 共通オプション</h3>
 <table>
 <tr><th>オプション</th><th>意味</th></tr>
-<tr><td><code>--dry-run</code></td><td>疑似機器で動かす。受信機には何も送らない（7章）</td></tr>
-<tr><td><code>--yes</code></td><td>確認の [y/n] にすべて y と答える。<code>--dry-run</code> の試運転用</td></tr>
-<tr><td><code>--keep-sa</code></td><td>スペアナの設定を変えない（手で設定したまま測る）</td></tr>
-<tr><td><code>--settle 秒</code></td><td>切り替え後の待ち時間。既定値は旧システムと同じ</td></tr>
+<tr><td><code>--settle 秒</code></td><td>IF系統を切り替えた後の待ち時間。既定値は旧システムと同じ（多くは 10 秒）。切り替え直後に出力が落ち着かない場合は長くする</td></tr>
+<tr><td><code>--keep-sa</code></td><td>スペアナの設定を変えない（手で設定したまま測る）。このとき平均はかけない設定にしておくこと</td></tr>
+<tr><td><code>--dry-run</code></td><td>疑似機器で動かす。受信機には何も送らない（8章）</td></tr>
+<tr><td><code>--yes</code></td><td>確認の [y/n] にすべて y と答える。<code>--dry-run</code> の試運転用で、本番では使わない</td></tr>
 </table>
 
-<h3>出力</h3>
+<h3>5.3 出力</h3>
 <p>実行した場所に、測定1回ごとにフォルダができる。</p>
 <pre>trx_map_261021_143005/
   meta.json      測定条件（引数、素子名とDA端子の対応、換算係数、スペアナ設定など）
-  traces.csv     1行がスペアナの1トレース。先頭の列が条件（バンド、バイアスなど）、
-                 続く p000, p001, ... がトレース（dBm）
+  traces.csv     1行がスペアナの1回分の表示データ。先頭の列が条件（IF系統、バイアスなど）、
+                 続く p000, p001, ... がスペアナの各点の値（dBm）
   result.csv     解析結果（測定の最後に自動で作られる）
-  trx_map.png    図（マップ系のみ）</pre>
-<p>旧システムの necstdb ではなく CSV なので、Excel や pandas でそのまま開ける。</p>
+  *.png          図</pre>
+<p>CSV なので、Excel や Python（pandas）でそのまま開ける。</p>
 
-<h3>安全のための確認</h3>
+<h3>5.4 安全のための確認</h3>
 <ul>
-  <li>起動時に設定ファイルの換算係数を確かめ、旧システムの値（1/(3*0.94)）から1%以上ずれていれば止まる</li>
-  <li>どのSISバイアスも 0 から 9.0 mV の外なら、出力する前に止まる（範囲は設定ファイルで変更可）</li>
+  <li>起動時に、設定ファイルのバイアスの換算係数が想定どおりかを確かめ、外れていれば何も出力せずに止まる</li>
+  <li>どのバイアスも 0 から 9.0 mV の外なら、出力する前に止まる（範囲は設定ファイルで変えられる）</li>
+  <li>SISミクサに負担をかけないよう、範囲や点数は推奨値から大きく外さない</li>
 </ul>
 
-<h2>5. 各スクリプト</h2>
+<h2>6. 各スクリプト</h2>
 
-<h3>5.1 yfactor_chopper.py：チョッパでの Trx（4系統）</h3>
-<p><b>前提:</b> チョッパが回っている。SISバイアスと LO は事前に設定しておく（このスクリプトは触らない）。</p>
-<pre>uv run python yfactor_chopper.py {filter,nofilter} FREQ</pre>
-<table>
-<tr><th>引数</th><th>意味</th></tr>
-<tr><td>filter / nofilter</td><td>周波数分離フィルタの有無（記録用）</td></tr>
-<tr><td>FREQ</td><td>1st LO SG の周波数（記録用。例 15.609）</td></tr>
-</table>
-<p><b>流れ:</b> y を待つ → HU, HL, VU, VL の順に IFスイッチを切り替え、10秒待って、ゼロスパンのトレースを1本取る。</p>
-<p><b>結果:</b> 系統ごとの Trx。</p>
-
-<h3>5.2 yfactor_hotcold.py：HOT と COLD を手で入れ替える Trx（4系統）</h3>
-<p><b>前提:</b> SISバイアスと LO は事前に設定しておく。</p>
-<pre>uv run python yfactor_hotcold.py {filter,nofilter} [--freq FREQ]</pre>
-<p><b>流れ:</b> HOT を置いて y → 4系統それぞれ、切り替え、10秒待ち、y で1本取る → COLD を置いて同じことをする。<code>--freq</code> を省くと周波数を聞かれる。</p>
-
-<h3>5.3 trx_map.py：Trx マップ（1系統）</h3>
-<p><b>前提:</b> チョッパが回っている。LO が入っている。</p>
+<h3>6.1 trx_map.py：SISバイアスの Trx マップ</h3>
 <pre>uv run python trx_map.py {HU,HL,VU,VL} --bias1 START STOP NUM --bias2 START STOP NUM [--auto]</pre>
 <table>
-<tr><th>引数</th><th>意味</th></tr>
-<tr><td>HU など</td><td>測る IF系統</td></tr>
-<tr><td><code>--bias1</code> START STOP NUM</td><td>v1 と h1 に同じ値を入れて振る。START から STOP まで NUM 点</td></tr>
-<tr><td><code>--bias2</code> START STOP NUM</td><td>v2 と h2 に同じ値を入れて振る</td></tr>
-<tr><td><code>--auto</code></td><td>Bias1 を1段変えるごとの y 確認をしない（旧 ver2_auto）。付けなければ旧 ver2 と同じく毎段 y を待つ</td></tr>
-<tr><td><code>--settle</code></td><td>Bias2 を変えた後の待ち時間。既定 5.8 秒</td></tr>
+<tr><th>引数</th><th>意味</th><th>推奨</th></tr>
+<tr><td>HU など</td><td>測る IF系統</td><td>4系統それぞれ1回ずつ</td></tr>
+<tr><td><code>--bias1 START STOP NUM</code></td><td>v1 と h1 に同じ値を入れて振る。START から STOP まで NUM 点 [mV]</td><td>6 8 21</td></tr>
+<tr><td><code>--bias2 START STOP NUM</code></td><td>v2 と h2 に同じ値を入れて振る</td><td>6 8 21</td></tr>
+<tr><td><code>--auto</code></td><td>Bias1 を1段進めるたびの確認（y の入力）をしない</td><td>ビニールに水滴がつかない時期なら付けると効率的</td></tr>
 </table>
-<p><b>流れ:</b> Bias1 の各値で v1, h1 を設定 →（<code>--auto</code> でなければ y を待つ）→ Bias2 の各値で v2, h2 を設定、5.8秒待ってトレースを1本取る。</p>
-<div class="warn">終了時に4本のSISバイアスをすべて 0 にする（旧システムと同じ）。測定後は運用値を設定し直すこと（initialize.py など）。</div>
-<p><b>所要時間の目安:</b> 21 × 21 点で約45分（待ち時間 5.8 秒の場合）。起動時に目安を表示する。</p>
-<p><b>結果:</b> trx_map.png。各マスの色と数字は同じ値から描いている（9章参照）。</p>
+<p><b>流れ:</b> Bias1 の値ごとに v1 と h1 を設定する。<code>--auto</code> がなければここで y を待つ（液体窒素の容器の様子を確かめる機会）。続いて Bias2 の値ごとに v2 と h2 を設定し、5.8 秒待ってから記録する。</p>
+<p><b>所要時間:</b> 21 × 21 点で約45分。起動時に目安を表示する。</p>
+<p><b>結果:</b> trx_map.png。各マスの色と数字は同じ値から描いている。Trx が低く、周りも低い領域の中心を選ぶ。</p>
+<div class="warn">終了時に4本のバイアスをすべて 0 にする（旧システムと同じ）。測定後は運用値でチューニングし直すこと。</div>
 
-<h3>5.4 loatt_search.py：LO減衰器の電流と Trx</h3>
-<p><b>前提:</b> チョッパが回っている。LO が入っている。</p>
-<pre>uv run python loatt_search.py START STOP NUM FREQ [--bias V1 H1 H2 V2] [--traces N]</pre>
+<h3>6.2 loatt_search.py：LO減衰器の電流と Trx</h3>
+<pre>uv run python loatt_search.py START STOP NUM FREQ [--bias V1 H1 H2 V2]</pre>
 <table>
-<tr><th>引数</th><th>意味</th></tr>
-<tr><td>START STOP NUM</td><td>減衰器の電流 [mA] を START から STOP まで NUM 点。旧スクリプトでは3つ目を step と呼んでいたが、実際は点数だった</td></tr>
-<tr><td>FREQ</td><td>1st LO SG の周波数（記録用）</td></tr>
-<tr><td><code>--bias</code></td><td>測定中に保つSISバイアス。省くと設定ファイルの tuned 値（旧システムでは対話入力）</td></tr>
-<tr><td><code>--traces</code></td><td>1点あたりのトレース数（既定 1）</td></tr>
+<tr><th>引数</th><th>意味</th><th>推奨</th></tr>
+<tr><td>START STOP NUM</td><td>LO減衰器の電流 [mA] を START から STOP まで NUM 点</td><td>16 30 15</td></tr>
+<tr><td>FREQ</td><td>1st LO SG の周波数 [GHz]（記録用）</td><td>15.609</td></tr>
+<tr><td><code>--bias</code></td><td>測定中に保つバイアス [mV]。省くと設定ファイルの運用値</td><td>trx_map で選んだ値</td></tr>
 </table>
-<p><b>流れ:</b> バイアスを設定して y → 各電流で H を設定、60秒待って V を設定 → HL と VL を測る。最後に、残す H と V の電流を聞かれ、その値に設定する。</p>
+<p><b>流れ:</b> バイアスを設定し y を待つ。電流の値ごとに H 側を設定して 60 秒待ち、V 側を設定する。続いて HL と VL を記録する。最後に、残す H と V の電流を聞かれるので入力すると、その値に設定して終わる。</p>
+<p><b>結果:</b> trx_vs_loatt.png。Trx が最も低くなる電流を選ぶ。</p>
 
-<h3>5.5 irr_measure.py：IRR（両偏波）</h3>
-<p><b>前提:</b> LO が入っている。HOT と COLD は手で置く。試験信号は Phase Matrix FSW-0020 から出す（スクリプトが制御する）。</p>
+<h3>6.3 irr_measure.py：IRR</h3>
 <pre>uv run python irr_measure.py V1 H1 H2 V2 [--usb-freq 16.609] [--lsb-freq 14.609]</pre>
 <table>
 <tr><th>引数</th><th>意味</th></tr>
-<tr><td>V1 H1 H2 V2</td><td>SISバイアス [mV]。旧 set_sis_vol_direction.py と同じ順</td></tr>
-<tr><td><code>--usb-freq</code>, <code>--lsb-freq</code></td><td>試験信号 SG の周波数 [GHz]。省くと聞かれる。SG の出力は6逓倍されて受信機に入る</td></tr>
+<tr><td>V1 H1 H2 V2</td><td>バイアス [mV]。この順に並べる</td></tr>
+<tr><td><code>--usb-freq</code>, <code>--lsb-freq</code></td><td>試験信号 SG の周波数 [GHz]。SG の出力は6逓倍されて受信機に入る。USB は 16.609（RF 99.654 GHz）、LSB は 14.609（RF 87.654 GHz）。省くと聞かれる</td></tr>
 </table>
-<p><b>流れ:</b> バイアス設定、試験信号オフ → COLD、HOT の順に4系統 → USB 試験信号、LSB 試験信号の順に4系統。各系統で切り替え、10秒待ち、y で1本取る。</p>
-<p><b>結果:</b> 偏波ごとの IRR（USB, LSB）と Trx。バイアスは設定したまま終わる。</p>
+<p><b>流れ:</b> バイアスを設定し、試験信号を止める。COLD、HOT の順に、Old MMC の切り替えを指示されるので従う。それぞれで4つの IF系統を記録する。続いて USB、LSB の試験信号を順に出し、同じく4系統を記録する。各系統で、切り替え、待ち、y の入力、記録の順に進む。</p>
+<p><b>結果:</b> 偏波ごとの IRR（USB, LSB）と Trx。バイアスは設定したまま終わる。バイアスを変えて何回か測ったら、次のようにまとめてマップにする。</p>
+<pre>python rx_performance_analysis.py irr-map irr_map_out irr_measure_*</pre>
 
-<h2>6. 解析（rx_performance_analysis.py）</h2>
-<p>測定スクリプトは最後に自動で解析する。解析だけをやり直すときは次のように実行する。</p>
-<pre>python rx_performance_analysis.py trx_map_261021_143005
-python rx_performance_analysis.py irr-map 出力フォルダ irr_measure_A irr_measure_B ...</pre>
-<p><code>irr-map</code> は、バイアスを変えて取った複数回の irr_measure をまとめ、偏波ごとに IRR と Trx のマップを作る（旧 irr_map_multi_data_integration.ipynb）。</p>
+<h3>6.4 yfactor_chopper.py：4系統の Trx（チョッパー）</h3>
+<pre>uv run python yfactor_chopper.py {filter,nofilter} FREQ</pre>
+<p>filter/nofilter は周波数分離フィルタの有無、FREQ は 1st LO SG の周波数（どちらも記録用）。バイアスと LO は事前に設定しておく（このスクリプトは変えない）。4つの IF系統を順に切り替え、10 秒待って記録する。</p>
+
+<h3>6.5 yfactor_hotcold.py：4系統の Trx と周波数特性（スライダー）</h3>
+<pre>uv run python yfactor_hotcold.py {filter,nofilter} [--freq FREQ]</pre>
+<p>HOT にして y、4系統を記録、COLD にして y、4系統を記録、の順に進む。各系統で平均の完了を待ってから記録する。
+結果は系統ごとの Trx（result.csv）と、IF 周波数ごとの Trx（trx_spectrum.csv, trx_spectrum.png）。</p>
+
+<h2>7. 解析（rx_performance_analysis.py）</h2>
+<p>測定スクリプトは最後に自動で解析する。解析だけやり直すときは、測定のフォルダを指定して実行する。</p>
+<pre>python rx_performance_analysis.py trx_map_261021_143005</pre>
 <table>
-<tr><th>計算</th><th>方法（旧 notebook と同じ）</th></tr>
-<tr><td>チョッパの Trx</td><td>ゼロスパンのトレースから立ち上がりと立ち下がりを除き、平均より上を HOT、下を COLD として Y を求める</td></tr>
-<tr><td>HOT/COLD の Trx</td><td>HOT と COLD のトレースの差（dB）の平均から Y を求める</td></tr>
-<tr><td>Y から Trx</td><td>Trx = (Thot − Tcold Y)/(Y − 1)、Thot = 300 K、Tcold = 77 K</td></tr>
-<tr><td>IRR</td><td>HOT/COLD の出力と、試験信号のピーク（信号 − HOT が最大の点）から計算</td></tr>
+<tr><th>計算</th><th>方法</th></tr>
+<tr><td>チョッパーの Trx</td><td>ゼロスパンの波形から HOT と COLD の切り替わり目を除き、平均より上を HOT、下を COLD の出力とする</td></tr>
+<tr><td>スライダーの Trx</td><td>HOT と COLD の出力の差（dB）を平均して Y を求める。周波数特性は各周波数の点ごとに求める</td></tr>
+<tr><td>Y から Trx</td><td>Trx = (300 − 77 Y)/(Y − 1)</td></tr>
+<tr><td>IRR</td><td>HOT と COLD の出力と、試験信号の強さ（各 IF系統で 信号 − HOT が最大の点）から計算する</td></tr>
 </table>
-<p>旧データでの照合: 2025-09-10 の Trx マップは旧図の色と1マスずつ一致、2025-09-18 の IRR は旧 notebook の値と小数第2位まで一致。</p>
+<p>計算は旧システムの解析と同じで、旧システムの測定データで結果が一致することを確かめてある。</p>
+<div class="note">旧システムで作られた数字入りのマップには誤りがあった。Trx マップは数字の行と列が入れ替わっていた（色が正しい）。IRR マップは色が1列ずれることがあった（数字が正しい）。旧システムの図を見返すときは注意する。</div>
 
-<h2>7. 疑似機器での試運転（<code>--dry-run</code>）</h2>
-<p>受信機につながずに、スクリプトが最後まで動くかを確かめるための機能。</p>
+<h2>8. 疑似機器での試運転（<code>--dry-run</code>）</h2>
+<p>受信機につながずに、スクリプトが最後まで動くかを確かめる機能。DAボード、スペアナ、IFスイッチ、LO減衰器、試験信号 SG の代わりに、それらしい形のデータを返す疑似機器を使う。</p>
 <ul>
-  <li>DAボード、スペアナ、IFスイッチ、LO減衰器、試験信号 SG の代わりに、それらしい形のデータを返す「疑似機器」を使う</li>
-  <li>受信機には何も送らないので、手元の PC でも FAC でも安全に動かせる</li>
-  <li>出てくる Trx や IRR の数値には物理的な意味はない。確かめられるのは、手順、記録、解析、作図が通ること</li>
-  <li>引数の打ち間違いや、所要時間の目安を本番前に確かめるのにも使える</li>
+  <li>受信機には何も送らないので、手元の PC でも安全に動かせる</li>
+  <li>出てくる Trx や IRR の数値に意味はない。確かめられるのは、手順、記録、解析、作図が止まらずに動くこと</li>
+  <li>引数の打ち間違いや所要時間を、本番の前に確かめるのに使う</li>
 </ul>
 <pre>python trx_map.py HL --bias1 6 8 5 --bias2 6 8 5 --dry-run --yes</pre>
 
-<h2>8. 設定ファイル device_config_ros.toml</h2>
-<p>旧システムの動作を再現するための設定。旧システムのソースと 2025年9月の運用ログで確認した値にしてある。</p>
+<h2>9. 設定ファイル（device_config_ros.toml）</h2>
+<p>旧システムの動作を再現するための設定。運用中の ~/tz_workspace/device_config.toml とは別のファイルで、このスクリプト群はそちらを読まない。</p>
 <table>
-<tr><th>項目</th><th>値</th><th>根拠</th></tr>
-<tr><td>DA出力の換算</td><td>指令値 × 1/(3*0.94)</td><td>旧システムの設定と運用ログ。この値でミクサにかかる電圧が指令値と1%以内で一致する</td></tr>
-<tr><td>素子名とDA端子</td><td>v1 = DA ch7, h1 = DA ch6, h2 = DA ch5, v2 = DA ch8</td><td>旧システムが実際に出力していた対応（2020-05 以降）</td></tr>
-<tr><td>DAレンジ</td><td>10V</td><td>本番と同じ。出力中にレンジを変えると一瞬電圧が変わるため</td></tr>
-<tr><td>tuned（運用値）</td><td>v1 6.4, h1 7.3, h2 7.3, v2 6.3 mV</td><td>2025-2026 シーズンの旧システムの運用値</td></tr>
-<tr><td>LO減衰器</td><td>ポート4 = H = 23 mA、ポート5 = V = 23 mA</td><td>旧システムの launch と運用値</td></tr>
-<tr><td>IFスイッチの経路</td><td>HU 105, HL 106, VU 107, VL 108</td><td>旧システムの switch_writer.conf</td></tr>
+<tr><th>項目</th><th>値</th></tr>
+<tr><td>バイアスの換算</td><td>指令値 [mV] ÷ (3 × 0.94) = DA出力 [V]。旧システムと同じで、ミクサにかかる電圧が指令値と1%以内で一致する</td></tr>
+<tr><td>素子名とDA端子</td><td>v1 = DA ch7、h1 = DA ch6、h2 = DA ch5、v2 = DA ch8（旧システムが実際に出力していた対応）</td></tr>
+<tr><td>運用値（tuned）</td><td>v1 6.4、h1 7.3、h2 7.3、v2 6.3 mV（2025-2026 シーズン）</td></tr>
+<tr><td>LO減衰器</td><td>GPIB ポート4 が H、ポート5 が V。運用値はどちらも 23 mA</td></tr>
+<tr><td>IFスイッチ</td><td>HU 105、HL 106、VU 107、VL 108</td></tr>
+<tr><td>HOT, COLD の温度</td><td>300 K、77 K</td></tr>
 </table>
-<div class="warn">本番の device_config.toml とは素子名の対応と換算係数が違う。本番側（新システム）では v1 = DA ch5, h2 = DA ch7、換算は × 0.94/3。同じ「v1 = 6.4」でも、どちらの設定で動かすかによってかかる電圧と端子が変わる。</div>
+<div class="warn">運用中の device_config.toml とは、素子名とDA端子の対応、およびバイアスの換算が異なる。同じ「v1 = 6.4」でも、どちらの設定で動かすかで、かかる電圧とミクサが変わる。この食い違いは現在整理中である（10章）。</div>
 
-<h2>9. 注意点と未確定事項</h2>
+<h2>10. 注意点と未確定事項</h2>
 <ul>
-  <li><b>実機では未試験。</b>初回は <code>--dry-run</code> で手順を確かめてから、短い格子で試すこと</li>
-  <li><b>素子名と物理的な偏波の対応は未確定。</b>旧システムの書き込み側の名前と、読み取り側（新システムと同じ）の名前で、DA ch5 と ch7 の扱いが食い違っている。FAC で LO を入れ、DA端子を1本ずつ動かしてどの IF が変わるかを見れば決まる。決まったら設定ファイルを直す</li>
-  <li><b>IFスイッチ:</b> tz_controller の IFSwitch.close() は close ではなく open を送る。このスクリプト群は close を直接呼んで回避している</li>
-  <li><b>IRR のスペアナ設定:</b> 旧システムではスペアナを手で設定していた。既定値（中心 6 GHz、スパン 0.5 MHz）は旧 notebook の前提に合わせたもの。RBW などは meta.json に記録されるので確認すること</li>
-  <li><b>旧システムの数字入りマップ:</b> Trx マップ（trx_map-num 図）は数字が転置されていた（色が正しい）。IRR マップは色が1列ずれることがあった（数字が正しい）。新しい図では色と数字は同じ値から描いている</li>
+  <li><b>実機では未試験。</b>初回は <code>--dry-run</code> で手順を確かめ、次に短い格子（例: 5 × 5 点）で試す</li>
+  <li><b>素子名と物理的な偏波の対応が未確定。</b>DA ch5 と ch7 のどちらが V偏波のミクサかが決まっていない。決まり次第、設定ファイルとこのマニュアルを直す</li>
+  <li><b>IFスイッチの動作。</b>旧システムと同じ順で open と close の命令を送っている。各命令で実際にどの IF がスペアナに届くかは、実機で確かめる</li>
 </ul>
 
-<h2>10. 改訂履歴</h2>
+<h2>11. 改訂履歴</h2>
 <table>
 <tr><th>版</th><th>日付</th><th>内容</th></tr>
-<tr><td>0.1</td><td>2026-10-21</td><td>初版。旧システムの6本を5本に移植、解析を追加</td></tr>
+<tr><td>0.1</td><td>2026-10-21</td><td>初版</td></tr>
+<tr><td>0.2</td><td>2026-10-21</td><td>TZ を知らない読者向けに全面改稿。測定準備、運用値を決める流れ、スペアナ設定（TZマニュアルに準拠）、平均の完了待ち、Trx の周波数特性を追加</td></tr>
 </table>
 <p>原稿は TZ-tools の docs/manual/rx_performance_manual.html。コードを変えたらここを直し、docs/manual/build_pdf.sh で PDF を作り直す。</p>
 

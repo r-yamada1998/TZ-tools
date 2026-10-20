@@ -11,8 +11,8 @@ comparable with ROS-era results:
     IRR           irr_cal_template.ipynb (irr_cal_linear)
 
 Usage:
-    python tz_analysis.py <run_directory>
-    python tz_analysis.py irr-map <output_directory> <irr_run_dir> [<irr_run_dir> ...]
+    python rx_performance_analysis.py <run_directory>
+    python rx_performance_analysis.py irr-map <output_directory> <irr_run_dir> [<irr_run_dir> ...]
 
 The run directory is what a measurement script wrote. Its meta.json says which
 kind of measurement it holds; the result is written next to the raw data as

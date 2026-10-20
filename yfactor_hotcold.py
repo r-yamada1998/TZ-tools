@@ -16,7 +16,7 @@ the same with the COLD load.
 
 import argparse
 
-import tz_measure as tm
+import rx_performance_common as tm
 
 
 def main() -> None:

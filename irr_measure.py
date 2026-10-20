@@ -22,7 +22,7 @@ LSB test signal on, the same four bands. The biases are left as set.
 
 import argparse
 
-import tz_measure as tm
+import rx_performance_common as tm
 
 
 def ask_freq(label: str) -> float:

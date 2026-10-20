@@ -78,10 +78,10 @@ def finish(recorder: "Recorder") -> None:
     recorder.save_meta()
     print(f'\nRaw data: "{recorder.dir}"')
     try:
-        import tz_analysis
-        tz_analysis.analyze(recorder.dir)
+        import rx_performance_analysis as analysis
+        analysis.analyze(recorder.dir)
     except Exception as e:
-        print(f"Analysis failed ({e!r}). Run: python tz_analysis.py {recorder.dir}")
+        print(f"Analysis failed ({e!r}). Run: python rx_performance_analysis.py {recorder.dir}")
 
 
 def load_config() -> dict:

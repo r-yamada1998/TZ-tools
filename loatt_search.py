@@ -25,7 +25,7 @@ import argparse
 
 import numpy as np
 
-import tz_measure as tm
+import rx_performance_common as tm
 
 
 def main() -> None:

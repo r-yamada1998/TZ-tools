@@ -12,12 +12,12 @@ Usage:
 
 Sequence (as in ROS): for HU, HL, VU, VL, open the IF switch path, wait 10 s,
 take one 0-span trace, close the path. Trx is computed from the hot and cold
-levels in each trace (tz_analysis.py).
+levels in each trace (rx_performance_analysis.py).
 """
 
 import argparse
 
-import tz_measure as tm
+import rx_performance_common as tm
 
 
 def main() -> None:

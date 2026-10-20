@@ -14,7 +14,9 @@
   h3 { font-size: 12pt; margin-top: 14pt; page-break-after: avoid; color: #2b5c8a; }
   table { border-collapse: collapse; width: 100%; margin: 6pt 0 10pt; }
   tr { page-break-inside: avoid; }
-  th, td { border: 0.6pt solid #999; padding: 3pt 6pt; vertical-align: top; text-align: left; }
+  th, td { border: 0.6pt solid #999; padding: 3pt 6pt; vertical-align: top; text-align: left;
+           overflow-wrap: anywhere; }
+  table.fixed { table-layout: fixed; }
   th { background: #e8eef5; }
   code, pre { font-family: "Menlo", "Consolas", monospace; font-size: 9.2pt; }
   pre { background: #f4f4f4; border: 0.6pt solid #ccc; padding: 6pt 8pt; white-space: pre-wrap;
@@ -44,7 +46,8 @@
 測定の手順と解析の計算は旧システムと同じにしてあり、旧システムの結果とそのまま比べられる。</p>
 
 <h2>2. 用語</h2>
-<table>
+<table class="fixed">
+<colgroup><col style="width:19%"><col style="width:81%"></colgroup>
 <tr><th>用語</th><th>意味</th></tr>
 <tr><td>旧システム</td><td>ROS で動いていた制御一式（2019-2025）。旧スクリプトは制御PCで動いていた</td></tr>
 <tr><td>新システム</td><td>tz_controller と TZ-tools。ROS なしで FAC 上で動く</td></tr>
@@ -60,7 +63,8 @@
 </table>
 
 <h2>3. スクリプトの一覧</h2>
-<table>
+<table class="fixed">
+<colgroup><col style="width:23%"><col style="width:34%"><col style="width:15%"><col style="width:28%"></colgroup>
 <tr><th>新スクリプト</th><th>何をするか</th><th>HOT/COLD</th><th>旧スクリプト</th></tr>
 <tr><td>trx_map.py</td><td>Bias1 と Bias2 を格子状に振り、1つの IF系統の Trx マップを作る</td><td>チョッパー</td><td>yfactor_with_search_sis_vol_direction-ver2.py、同 -ver2_auto.py</td></tr>
 <tr><td>loatt_search.py</td><td>LO減衰器の電流を振り、HL と VL の Trx を測る</td><td>チョッパー</td><td>yfactor_with_search_loatt_level_direction-ver2.py</td></tr>

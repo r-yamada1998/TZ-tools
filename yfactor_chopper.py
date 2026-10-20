@@ -45,7 +45,7 @@ def main() -> None:
         print(band, "is measuring...")
         rig.open_band(band)
         tm.sleep(rig, args.settle)
-        rec.add(rig.trace(), band=band)
+        rec.add(rig.fresh_trace(), band=band)
         rig.close_band(band)
 
     tm.finish(rec)

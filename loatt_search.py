@@ -74,7 +74,7 @@ def main() -> None:
             print("current measurement band:", band)
             tm.sleep(rig, args.settle)
             for k in range(args.traces):
-                rec.add(rig.trace(), att_mA=att, band=band, repeat=k)
+                rec.add(rig.fresh_trace(), att_mA=att, band=band, repeat=k)
 
     tm.finish(rec)
 

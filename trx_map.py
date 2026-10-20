@@ -78,7 +78,7 @@ def main() -> None:
                 print(f"bias1 = {v1:.3f}, bias2 = {v2:.3f} mV")
                 rig.set_bias(v2=float(v2), h2=float(v2))
                 tm.sleep(rig, args.settle)
-                rec.add(rig.trace(), bias1_mV=round(float(v1), 4), bias2_mV=round(float(v2), 4))
+                rec.add(rig.fresh_trace(), bias1_mV=round(float(v1), 4), bias2_mV=round(float(v2), 4))
     finally:
         rig.zero_bias()
         print("All SIS biases set to 0. Set the operating values again.")

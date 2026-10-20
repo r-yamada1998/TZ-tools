@@ -81,8 +81,10 @@ tcold = 77.0
 # Hard limits on any SIS bias command [mV], checked before output
 bias_min = 0.0
 bias_max = 9.0
-# Spectrum analyzer settings per measurement. The ROS scripts never set the
-# analyzer; the operator did it by hand with set_sa_param.py. These are the
-# settings the ROS analysis notebooks assume.
-sa_chopper = { center = "6GHz", span = "0MHz", rbw = "300Hz", vbw = "300Hz", scale_type = "LOG", average_onoff = "OFF" }
-sa_irr = { center = "6GHz", span = "0.5MHz", scale_type = "LOG", average_onoff = "OFF" }
+# Spectrum analyzer settings per measurement, as given in the TZ manual
+# (2026-02 revision, sections B-2, B-3 and B-4). The ROS scripts never set the
+# analyzer; the operator did it by hand. Att. and Ref. level are left to the
+# operator (the manual says to adjust them as needed).
+sa_chopper = { center = "6GHz", span = "0Hz", rbw = "1MHz", vbw = "300Hz", sweep_time = 0.3, scale_type = "LOG", average_onoff = "OFF" }
+sa_slider = { center = "6GHz", span = "4GHz", rbw = "1MHz", vbw = "1MHz", scale_type = "LOG", average_num = 20, average_onoff = "ON" }
+sa_irr = { center = "6GHz", span = "500kHz", rbw = "300Hz", vbw = "10Hz", scale_type = "LOG", average_num = 5, average_onoff = "ON" }

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Receiver noise temperature of the four IF bands with HOT and COLD loads
-placed by hand.
+Receiver noise temperature of the four IF bands, HOT and COLD switched by
+hand with the slider (OLD MMC switch to Hot, then Cold).
 
 Port of the ROS script yfactor_sa_direction.py. Does not touch the SIS bias or
 the LO: set them beforehand.
@@ -11,7 +11,10 @@ Usage:
 
 Sequence (as in ROS): with the HOT load in place, for HU, HL, VU, VL open the
 IF switch path, wait 10 s, wait for "y", take one trace, close the path. Then
-the same with the COLD load.
+the same with the COLD load. With averaging on (TZ manual: 20 sweeps), each
+trace is read after the average has been restarted and completed.
+
+Result: Trx of each band, and Trx versus IF frequency (4-8 GHz).
 """
 
 import argparse
@@ -31,7 +34,7 @@ def main() -> None:
     rig = tm.start(args, use={"sa", "switch"})
     freq = args.freq if args.freq is not None else input("freq = ")
     if not args.keep_sa:
-        rig.setup_sa("sa_chopper")
+        rig.setup_sa("sa_slider")
     rec = tm.Recorder("yfactor_hotcold", {
         **tm.base_meta(rig, args),
         "filter_state": args.filter_state,
@@ -41,14 +44,14 @@ def main() -> None:
     }, columns=["load", "band"])
 
     for load in ["hot", "cold"]:
-        tm.ask_yes(f"{load.upper()} start")
+        tm.ask_yes(f"Set the OLD MMC switch to {load.upper()}, then start")
         rig.load = load
         for band in tm.BANDS:
             rig.open_band(band)
             print(band, "is setting...")
             tm.sleep(rig, args.settle)
             tm.ask_yes("ready")
-            rec.add(rig.trace(), load=load, band=band)
+            rec.add(rig.fresh_trace(), load=load, band=band)
             rig.close_band(band)
 
     tm.finish(rec)

@@ -212,17 +212,67 @@ def analyze_chopper(run_dir, meta, rows):
     write_result(run_dir, ["band", "trx_K"], out)
 
 
+def _hz(v) -> float:
+    """'6GHz', '500kHz', 6e9 -> Hz."""
+    if isinstance(v, (int, float)):
+        return float(v)
+    v = str(v).strip()
+    for unit, f in (("GHz", 1e9), ("MHz", 1e6), ("kHz", 1e3), ("Hz", 1.0)):
+        if v.endswith(unit):
+            return float(v[: -len(unit)]) * f
+    return float(v)
+
+
+def freq_axis(meta, n: int):
+    """IF frequency of each trace point [GHz], from the recorded analyzer settings."""
+    sa = meta.get("sa_params") or {}
+    try:
+        center, span = _hz(sa["center"]), _hz(sa["span"])
+    except (KeyError, ValueError, TypeError):
+        return None
+    return np.linspace(center - span / 2, center + span / 2, n) / 1e9
+
+
 def analyze_hotcold(run_dir, meta, rows):
-    """yfactor_hotcold: separate HOT and COLD traces per band."""
+    """
+    yfactor_hotcold: separate HOT and COLD traces per band, taken with the
+    slider. Gives the band Trx and, point by point, Trx versus IF frequency.
+    """
     thot, tcold = meta["thot"], meta["tcold"]
     by = {(r["load"], r["band"]): r["trace"] for r in rows}
-    out = []
+    out, spectra = [], {}
     for band in BANDS:
         if ("hot", band) in by and ("cold", band) in by:
-            trx = hotcold_trx(by[("hot", band)], by[("cold", band)], thot, tcold)
+            hot, cold = by[("hot", band)], by[("cold", band)]
+            trx = hotcold_trx(hot, cold, thot, tcold)
+            spectra[band] = trx_from_y(10.0 ** ((hot - cold) / 10.0), thot, tcold)
             out.append([band, round(trx, 2)])
             print(f"{band}: Trx = {trx:.1f} K")
     write_result(run_dir, ["band", "trx_K"], out)
+
+    n = len(next(iter(spectra.values()))) if spectra else 0
+    f = freq_axis(meta, n)
+    with (run_dir / "trx_spectrum.csv").open("w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["if_freq_GHz" if f is not None else "point"] + list(spectra))
+        for i in range(n):
+            x = round(float(f[i]), 6) if f is not None else i
+            w.writerow([x] + [round(float(spectra[b][i]), 2) for b in spectra])
+
+    plt = _pyplot()
+    if plt is None or not spectra:
+        return
+    x = f if f is not None else np.arange(n)
+    fig, ax = plt.subplots(figsize=(9, 5))
+    for band, t in spectra.items():
+        ax.plot(x, t, label=f"{band} (band Trx {dict(out)[band]:.0f} K)")
+    ax.set_xlabel("IF frequency [GHz]" if f is not None else "trace point")
+    ax.set_ylabel("Trx [K]")
+    ax.set_ylim(0, 300)
+    ax.grid(True, linestyle=":")
+    ax.legend()
+    fig.savefig(run_dir / "trx_spectrum.png", dpi=100, bbox_inches="tight")
+    plt.close(fig)
 
 
 def analyze_trx_map(run_dir, meta, rows):

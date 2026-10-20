@@ -62,7 +62,7 @@ def main() -> None:
             print("setting", band)
             tm.sleep(rig, args.settle)
             tm.ask_yes("ready?")
-            rec.add(rig.trace(), load=load, band=band, signal_GHz=signal)
+            rec.add(rig.fresh_trace(), load=load, band=band, signal_GHz=signal)
             rig.close_band(band)
 
     try:
@@ -72,7 +72,7 @@ def main() -> None:
         # The ROS file names called these the black body temperatures.
         for load in ["cold", "hot"]:
             print("--------", load, "--------")
-            tm.ask_yes("measurement start")
+            tm.ask_yes(f"Set the OLD MMC switch to {load.upper()}, then start")
             rig.load = load
             sweep_bands(load, "")
 

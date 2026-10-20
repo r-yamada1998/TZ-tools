@@ -60,7 +60,8 @@ def add_common_args(parser) -> None:
     parser.add_argument("--yes", action="store_true",
                         help="answer y to every prompt (for --dry-run tests)")
     parser.add_argument("--keep-sa", action="store_true",
-                        help="leave the spectrum analyzer settings as they are")
+                        help="leave the spectrum analyzer settings as they are "
+                             "(averaging is then assumed off)")
 
 
 def start(args, use: set[str]) -> "Rig":
@@ -223,12 +224,35 @@ class Rig:
     # --- Spectrum analyzer -----------------------------------------------
 
     def setup_sa(self, profile: str) -> None:
-        """profile is "sa_chopper" or "sa_irr" from [measurement]."""
+        """profile is "sa_chopper", "sa_slider" or "sa_irr" from [measurement]."""
         params = dict(self.m[profile])
+        self._averaging = str(params.get("average_onoff", "OFF")).upper() == "ON"
+        self._average_num = int(params.get("average_num", 1))
         if self.dry_run:
             self._fake.sa_params = params
             return
         self.sa.setup(**params)
+
+    def fresh_trace(self) -> np.ndarray:
+        """
+        A trace that contains nothing from before the last change (IF path,
+        load, test signal). With averaging on, the analyzer keeps averaging
+        across such a change, so the average is restarted and the trace is
+        read only after average_num sweeps. The TZ manual asks for the same
+        by hand: confirm the averaging has completed before recording.
+        Call it after the settling wait.
+        """
+        if getattr(self, "_averaging", False) and not self.dry_run:
+            self.sa.com.open()
+            try:
+                self.sa.sa.average_restart()
+                sweep = float(self.sa.sa.sweep_time_query())
+            finally:
+                self.sa.com.close()
+            wait = self._average_num * sweep * 1.2 + 1.0
+            print(f"waiting {wait:.0f} s for {self._average_num} averaged sweeps")
+            time.sleep(wait)
+        return self.trace()
 
     def sa_params(self) -> dict:
         if self.dry_run:

@@ -423,7 +423,51 @@ def irr_map(run_dirs, out_dir) -> None:
         plt.close(fig)
 
 
+def analyze_settle(run_dir, meta, rows, tol: float = 0.05):
+    """settle_test: chopper Trx against time since each bias change."""
+    thot, tcold = meta["thot"], meta["tcold"]
+    watch = float(meta["arguments"]["watch"])
+    out, curves = [], []
+    for c in sorted({int(r["change"]) for r in rows}):
+        rs = [r for r in rows if int(r["change"]) == c]
+        t = np.array([float(r["t_read_start_s"]) for r in rs])
+        t_end = np.array([float(r["t_read_end_s"]) for r in rs])
+        trx = np.array([chopper_trx(r["trace"], thot, tcold) for r in rs])
+        final = float(np.nanmedian(trx[t >= watch - 3.0])) if np.any(t >= watch - 3.0) else float(trx[-1])
+        off = np.abs(trx - final) > tol * abs(final)
+        # The first read after which every read stays within tol of the final value
+        idx = np.nonzero(off)[0]
+        if len(idx) == 0:
+            settled = 0.0
+        elif idx[-1] + 1 < len(t):
+            settled = float(t[idx[-1] + 1])
+        else:
+            settled = float("nan")
+        read_s = float(np.median(t_end - t))
+        out.append([c, rs[0]["target"], round(final, 2), settled, round(read_s, 3), len(rs)])
+        curves.append((c, rs[0]["target"], t, trx))
+        print(f"change {c} -> {rs[0]['target']}: final Trx {final:.1f} K, "
+              f"within {tol:.0%} from {settled:.2f} s, one read takes {read_s:.2f} s")
+    write_result(run_dir, ["change", "target", "final_trx_K", "settled_after_s", "read_time_s", "n_traces"], out)
+
+    plt = _pyplot()
+    if plt is None:
+        return
+    fig, ax = plt.subplots(figsize=(9, 5))
+    for c, target, t, trx in curves:
+        ax.plot(t, trx, ".-", color="C0" if target == "B" else "C1", alpha=0.7, lw=0.8)
+    ax.plot([], [], ".-", color="C0", label="A -> B")
+    ax.plot([], [], ".-", color="C1", label="B -> A")
+    ax.set_xlabel("start of trace read since bias change [s]")
+    ax.set_ylabel("chopper Trx [K]")
+    ax.set_title(f"Settling after SIS bias change, {meta['band']}")
+    ax.legend()
+    fig.savefig(run_dir / "settle_test.png", dpi=100, bbox_inches="tight")
+    plt.close(fig)
+
+
 ANALYZERS = {
+    "settle_test": analyze_settle,
     "yfactor_chopper": analyze_chopper,
     "yfactor_hotcold": analyze_hotcold,
     "trx_map": analyze_trx_map,

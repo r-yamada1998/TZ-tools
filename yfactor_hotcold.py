@@ -6,8 +6,8 @@ hand with the slider (OLD MMC switch to Hot, then Cold).
 Port of the ROS script yfactor_sa_direction.py. Does not touch the SIS bias or
 the LO: set them beforehand.
 
-Usage:
-    cd ~/tz_workspace && uv run python yfactor_hotcold.py {filter,nofilter} [--freq FREQ]
+Usage (in the folder that holds this script):
+    uv run python yfactor_hotcold.py {filter,nofilter} [--freq FREQ]
 
 Sequence (as in ROS): with the HOT load in place, for HU, HL, VU, VL open the
 IF switch path, wait 10 s, wait for "y", take one trace, close the path. Then

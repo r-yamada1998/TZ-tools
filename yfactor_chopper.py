@@ -5,8 +5,8 @@ Receiver noise temperature of the four IF bands with the rotating chopper.
 Port of the ROS script yfactor_chopper_directon.py. Does not touch the SIS bias
 or the LO: set them beforehand (initialize.py, or the values of your choice).
 
-Usage:
-    cd ~/tz_workspace && uv run python yfactor_chopper.py {filter,nofilter} FREQ
+Usage (in the folder that holds this script):
+    uv run python yfactor_chopper.py {filter,nofilter} FREQ
 
     FREQ is only a label for the record, e.g. 15.609 (the 1st LO SG frequency).
 

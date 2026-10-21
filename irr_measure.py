@@ -5,8 +5,8 @@ Image rejection ratio of both polarizations at one set of SIS biases.
 Port of the ROS script irr_measurement2.py. HOT and COLD loads are placed by
 hand; the test signal comes from the Phase Matrix FSW-0020.
 
-Usage:
-    cd ~/tz_workspace && uv run python irr_measure.py V1 H1 H2 V2 \
+Usage (in the folder that holds this script):
+    uv run python irr_measure.py V1 H1 H2 V2 \
         [--usb-freq 16.609] [--lsb-freq 14.609] [--soft-average N]
 
     V1 H1 H2 V2   SIS biases [mV], in the order of set_sis_vol_direction.py

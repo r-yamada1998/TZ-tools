@@ -5,8 +5,8 @@ Receiver noise temperature versus LO attenuator current, HL and VL bands.
 Port of the ROS script yfactor_with_search_loatt_level_direction-ver2.py.
 The chopper must be rotating.
 
-Usage:
-    cd ~/tz_workspace && uv run python loatt_search.py START STOP NUM FREQ \
+Usage (in the folder that holds this script):
+    uv run python loatt_search.py START STOP NUM FREQ \
         [--bias V1 H1 H2 V2]
 
     START STOP NUM  attenuator currents [mA], numpy.linspace(START, STOP, NUM).

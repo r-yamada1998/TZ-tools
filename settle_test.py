@@ -11,8 +11,8 @@ with the new system, so that trx_map.py --settle can be shortened safely.
 
 Not a ROS port. The chopper must be rotating and the LO on, as for trx_map.
 
-Usage:
-    cd ~/tz_workspace && uv run python settle_test.py HU \
+Usage (in the folder that holds this script):
+    uv run python settle_test.py HU \
         --a 6.4 7.3 7.3 6.3 --b 6.4 7.3 7.8 6.3 [--repeat 5] [--watch 10]
 
     --a V1 H1 H2 V2   the point the receiver is at now; restored at the end

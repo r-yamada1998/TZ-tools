@@ -31,7 +31,7 @@
 <body>
 
 <h1>TZ受信機 性能評価スクリプト 使い方マニュアル</h1>
-<div class="sub">版 0.2（2026-10-21）／ 実機での動作は未確認</div>
+<div class="sub">版 0.3（2026-10-21）／ 実機での動作は未確認</div>
 
 <h2>1. このマニュアルについて</h2>
 <p>TZ受信機の性能を測るスクリプト群の使い方を説明する。測るのは主に次の2つで、観測データの解析には使わない。</p>
@@ -52,7 +52,7 @@
 <tr><td>旧システム</td><td>ROS で動いていた制御一式（2019-2025）。旧スクリプトは制御PCで動いていた</td></tr>
 <tr><td>新システム</td><td>tz_controller と TZ-tools。ROS なしで FAC 上で動く</td></tr>
 <tr><td>制御PC</td><td>TZ の運用で VNC から入る PC。1st LO の信号発生器（Anapico SG）はここから操作する</td></tr>
-<tr><td>FAC</td><td>DA/AD ボードが刺さっていて、SISバイアスを直接扱う PC。このスクリプト群は FAC の ~/tz_workspace で動かす</td></tr>
+<tr><td>FAC</td><td>DA/AD ボードが刺さっていて、SISバイアスを直接扱う PC。このスクリプト群は FAC の ~/tz_workspace の下の専用フォルダに置き、そのフォルダで動かす</td></tr>
 <tr><td>素子名</td><td>SISミクサ4本の名前 v1, h1, h2, v2。v/h は偏波、1/2 は1つの偏波を受ける2本のミクサを表す</td></tr>
 <tr><td>IF系統</td><td>受信機の出力4本。HU, HL, VU, VL（偏波 H/V とサイドバンド U/L の組み合わせ）。IFスイッチでどれか1本をスペアナに送る</td></tr>
 <tr><td>HOT と COLD</td><td>受信機に見せる2つの基準の温度。HOT は室温の吸収体（300 K とする）、COLD は液体窒素に浸した吸収体（77 K とする）</td></tr>
@@ -71,6 +71,9 @@
 <tr><td>irr_measure.py</td><td>1組のバイアスで、両偏波の IRR と Trx を測る</td><td>スライダー</td><td>irr_measurement2.py</td></tr>
 <tr><td>yfactor_chopper.py</td><td>4つの IF系統の Trx を測る</td><td>チョッパー</td><td>yfactor_chopper_directon.py</td></tr>
 <tr><td>yfactor_hotcold.py</td><td>4つの IF系統の Trx と、その周波数特性を測る</td><td>スライダー</td><td>yfactor_sa_direction.py</td></tr>
+<tr><td>settle_test.py</td><td>バイアスを変えてから Trx が落ち着くまでの時間を測る（trx_map の待ち時間を決めるため）</td><td>チョッパー</td><td>なし（新規）</td></tr>
+<tr><td>timing_test.py</td><td>バイアスの追従、スペアナの読み出しと掃引、IFスイッチの切り替わりにかかる時間を測る。LO も液体窒素も要らない</td><td>なし</td><td>なし（新規）</td></tr>
+<tr><td>iv_curve_measure.py</td><td>4本のミクサの IV カーブを測る。<code>--ros</code> で旧システムの換算</td><td>なし</td><td>sis_i-v_curve_direction.py</td></tr>
 <tr><td>rx_performance_analysis.py</td><td>上の測定結果から Trx、IRR、マップを計算する（測定の最後に自動で動く）</td><td>なし</td><td>解析用の Jupyter notebook</td></tr>
 </table>
 
@@ -129,12 +132,13 @@
 <tr><td>IRR</td><td>6 GHz</td><td>500 kHz</td><td>300 Hz</td><td>10 Hz</td><td>自動</td><td>5回</td></tr>
 </table>
 <p>平均をとる測定では、IF系統や HOT/COLD を切り替えるたびに平均をやり直させ、決められた回数の掃引が終わってから記録する。
-切り替え前のデータが平均に混ざらないようにするためである（旧システムでは、平均の完了を人が目で確かめていた）。</p>
+切り替え前のデータが平均に混ざらないようにするためである（旧システムでは、平均の完了を人が目で確かめていた）。
+irr_measure.py では、スペアナの平均の代わりに PC 側で平均する方法も選べる（6.3）。</p>
 
 <h2>5. 共通の使い方</h2>
 <h3>5.1 実行の形</h3>
-<p>FAC に入り、~/tz_workspace でスクリプト名の後に引数を並べて実行する。</p>
-<pre>cd ~/tz_workspace
+<p>FAC に入り、スクリプトを置いたフォルダ（~/tz_workspace の下）に移って、スクリプト名の後に引数を並べて実行する。結果のフォルダもそこにできる。</p>
+<pre>cd ~/tz_workspace/（スクリプトのフォルダ）
 uv run python trx_map.py HL --bias1 6.0 8.0 21 --bias2 6.0 8.0 21</pre>
 <p>どのスクリプトも <code>-h</code> を付けると引数の一覧が出る。旧スクリプトで対話入力していた値の多くは、引数で渡す形にした。
 人の操作（HOT/COLD の切り替えなど）が必要なところでは、旧スクリプトと同じく画面に指示が出て、<code>y</code> の入力を待つ。</p>
@@ -193,11 +197,12 @@ uv run python trx_map.py HL --bias1 6.0 8.0 21 --bias2 6.0 8.0 21</pre>
 <p><b>結果:</b> trx_vs_loatt.png。Trx が最も低くなる電流を選ぶ。</p>
 
 <h3>6.3 irr_measure.py：IRR</h3>
-<pre>uv run python irr_measure.py V1 H1 H2 V2 [--usb-freq 16.609] [--lsb-freq 14.609]</pre>
+<pre>uv run python irr_measure.py V1 H1 H2 V2 [--usb-freq 16.609] [--lsb-freq 14.609] [--soft-average N]</pre>
 <table>
 <tr><th>引数</th><th>意味</th></tr>
 <tr><td>V1 H1 H2 V2</td><td>バイアス [mV]。この順に並べる</td></tr>
 <tr><td><code>--usb-freq</code>, <code>--lsb-freq</code></td><td>試験信号 SG の周波数 [GHz]。SG の出力は6逓倍されて受信機に入る。USB は 16.609（RF 99.654 GHz）、LSB は 14.609（RF 87.654 GHz）。省くと聞かれる</td></tr>
+<tr><td><code>--soft-average N</code></td><td>スペアナの平均を切り、掃引 N 回分を1回ずつ記録して PC 側で平均する。切り替え後に始まった掃引だけを使うので前の系統が混ざらず、掃引どうしのばらつきから IRR と Trx の誤差（1σ）も出る。測定時間はスペアナで N 回平均するのと同じ。省くとスペアナの平均を使う</td></tr>
 </table>
 <p><b>流れ:</b> バイアスを設定し、試験信号を止める。COLD、HOT の順に、Old MMC の切り替えを指示されるので従う。それぞれで4つの IF系統を記録する。続いて USB、LSB の試験信号を順に出し、同じく4系統を記録する。各系統で、切り替え、待ち、y の入力、記録の順に進む。</p>
 <p><b>結果:</b> 偏波ごとの IRR（USB, LSB）と Trx。バイアスは設定したまま終わる。バイアスを変えて何回か測ったら、次のようにまとめてマップにする。</p>
@@ -211,6 +216,28 @@ uv run python trx_map.py HL --bias1 6.0 8.0 21 --bias2 6.0 8.0 21</pre>
 <pre>uv run python yfactor_hotcold.py {filter,nofilter} [--freq FREQ]</pre>
 <p>HOT にして y、4系統を記録、COLD にして y、4系統を記録、の順に進む。各系統で平均の完了を待ってから記録する。
 結果は系統ごとの Trx（result.csv）と、IF 周波数ごとの Trx（trx_spectrum.csv, trx_spectrum.png）。</p>
+
+<h3>6.6 settle_test.py：バイアスを変えた後の落ち着き</h3>
+<pre>uv run python settle_test.py HU --a 6.4 7.3 7.3 6.3 --b 6.4 7.3 7.8 6.3 [--repeat 5] [--watch 10]</pre>
+<p>Trx の違う2点 A と B のあいだでバイアスを行き来させ、変えるたびに 10 秒間トレースを続けて読む。A には今のバイアスを入れる（最後に A に戻る）。
+結果は、変えてからの時間と Trx の図（settle_test.png）と、何秒後から最終値の 5% 以内に収まったかの表。チョッパーと液体窒素が要る。</p>
+
+<h3>6.7 timing_test.py：待ち時間の試験（LO、液体窒素なし）</h3>
+<pre>uv run python timing_test.py [--only bias,sa,if,soft]</pre>
+<table>
+<tr><th>試験</th><th>分かること</th></tr>
+<tr><td>bias</td><td>各ミクサのバイアスを 2 mV と 3 mV のあいだで動かし、電圧モニタが新しい値に落ち着くまでの時間</td></tr>
+<tr><td>sa</td><td>チョッパーと IRR の設定それぞれで、掃引時間、トレース1本の読み出し時間、トレースが新しくなる間隔</td></tr>
+<tr><td>if</td><td>IF系統を切り替えてから、新しい系統の出力がトレースに現れるまでの時間</td></tr>
+<tr><td>soft</td><td>PC 側の平均（irr_measure の <code>--soft-average</code>）が、実機で掃引を1回ずつ正しく拾えるか</td></tr>
+</table>
+<p>結果は timing_test_（日時）フォルダの summary.txt にまとまる。終わるとバイアスはすべて 0 になる。</p>
+
+<h3>6.8 iv_curve_measure.py：IV カーブ</h3>
+<pre>uv run python iv_curve_measure.py          （2026-09 と同じ換算）
+uv run python iv_curve_measure.py --ros    （旧システムの換算）</pre>
+<p>4本のミクサを1本ずつ −5 から 10 mV まで 0.1 mV 刻みで掃引し、電圧と電流を読む。開始前に条件が表示され、yes と打つと始まる。終わるとバイアスは 0 になる。
+2026-09 の設定は、旧システムと比べて DA の換算が 12% 低く、AD の読みが2倍になる。比べるときは <code>--ros</code> の結果を使う。</p>
 
 <h2>7. 解析（rx_performance_analysis.py）</h2>
 <p>測定スクリプトは最後に自動で解析する。解析だけやり直すときは、測定のフォルダを指定して実行する。</p>
@@ -251,7 +278,8 @@ uv run python trx_map.py HL --bias1 6.0 8.0 21 --bias2 6.0 8.0 21</pre>
 <ul>
   <li><b>実機では未試験。</b>初回は <code>--dry-run</code> で手順を確かめ、次に短い格子（例: 5 × 5 点）で試す</li>
   <li><b>素子名と物理的な偏波の対応が未確定。</b>DA ch5 と ch7 のどちらが V偏波のミクサかが決まっていない。決まり次第、設定ファイルとこのマニュアルを直す</li>
-  <li><b>IFスイッチの動作。</b>旧システムと同じ順で open と close の命令を送っている。各命令で実際にどの IF がスペアナに届くかは、実機で確かめる</li>
+  <li><b>IFスイッチの動作。</b>open を送ると約3秒後にその系統に切り替わり、close では変わらないことを、旧システムの記録で確かめた。新スクリプトも旧システムと同じ順で送る</li>
+  <li><b>待ち時間。</b>バイアスや IF系統を変えた後の待ち時間は、旧システムと同じ値にしてある。旧システムの待ちはスペアナの更新の遅さで決まっていたので、timing_test と settle_test の結果で見直す予定</li>
 </ul>
 
 <h2>11. 改訂履歴</h2>
@@ -259,6 +287,7 @@ uv run python trx_map.py HL --bias1 6.0 8.0 21 --bias2 6.0 8.0 21</pre>
 <tr><th>版</th><th>日付</th><th>内容</th></tr>
 <tr><td>0.1</td><td>2026-10-21</td><td>初版</td></tr>
 <tr><td>0.2</td><td>2026-10-21</td><td>TZ を知らない読者向けに全面改稿。測定準備、運用値を決める流れ、スペアナ設定（TZマニュアルに準拠）、平均の完了待ち、Trx の周波数特性を追加</td></tr>
+<tr><td>0.3</td><td>2026-10-21</td><td>settle_test、timing_test、iv_curve_measure と、irr_measure の PC 側平均を追加。置き場所を専用フォルダに。IFスイッチの動作を確定</td></tr>
 </table>
 <p>原稿は TZ-tools の docs/manual/rx_performance_manual.html。コードを変えたらここを直し、docs/manual/build_pdf.sh で PDF を作り直す。</p>
 

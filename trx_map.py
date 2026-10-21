@@ -5,8 +5,8 @@ Map the receiver noise temperature of one IF band over two SIS bias voltages.
 Port of the ROS scripts yfactor_with_search_sis_vol_direction-ver2.py and
 -ver2_auto.py (--auto). The chopper must be rotating.
 
-Usage:
-    cd ~/tz_workspace && uv run python trx_map.py {HU,HL,VU,VL} \
+Usage (in the folder that holds this script):
+    uv run python trx_map.py {HU,HL,VU,VL} \
         --bias1 6.0 8.0 21 --bias2 6.0 8.0 21 [--auto]
 
     --bias1 START STOP NUM   sets v1 and h1 together

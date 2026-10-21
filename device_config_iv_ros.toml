@@ -1,0 +1,40 @@
+# IV config with the ROS conversions (iv_curve_measure.py --ros).
+# Same channels and reading order as device_config_iv.toml (2026-09); only the
+# conversions differ, so the two IV runs can be compared directly.
+#
+#                      device_config_iv.toml   this file (= ROS)
+#   setter factor      0.94/3 = 0.3133         1/(3*0.94) = 0.3546
+#   AD range           "10V"                   "5V"   (decoding only; nothing is sent to the board)
+#   voltage monitor    -2.80 mV/V              -5 mV/V   (sis_bias_v_reader.conf)
+#   current monitor    -500 uA/V               -500 uA/V (sis_bias_i_reader.conf)
+#
+# The mixer names here follow the AD pairs found on 2026-09-04
+# (v1 = DA ch5 -> AD ch9/ch10 ...), i.e. the ROS reader naming, not the ROS
+# writer naming used by device_config_ros.toml (see that file).
+#
+# Inline tables { } must stay on one line.
+
+[sis_bias_setter]
+_ = "CPZ3346"
+rsw_id = 0
+conversion_factor = 0.3546099290780142
+channel = { v1 = "ch5", v2 = "ch8", h1 = "ch6", h2 = "ch7" }
+# Kept at "10V" like the running setup; the DA range only sets resolution.
+range = { v1 = "10V", v2 = "10V", h1 = "10V", h2 = "10V" }
+# ROS operating values 6.4/7.3/7.3/6.3 (writer names v1 h1 h2 v2 = DA ch7 ch6
+# ch5 ch8), written per DA terminal in the names of this file. Only drawn as
+# reference lines on the IV plot.
+tuned = { v1 = 7.3, h1 = 7.3, h2 = 6.4, v2 = 6.3 }
+
+[sis_bias_reader]
+_ = "CPZ3177"
+rsw_id = 0
+all_ch_num = 8
+# Voltage channels first (see device_config_iv.toml on the AD crosstalk).
+channel = { v1_v = "ch10", v1 = "ch9", v2_v = "ch16", v2 = "ch15", h1_v = "ch12", h1 = "ch11", h2_v = "ch14", h2 = "ch13" }
+ch_range = { v1_v = "5V", v1 = "5V", v2_v = "5V", v2 = "5V", h1_v = "5V", h1 = "5V", h2_v = "5V", h2 = "5V" }
+conversion_factor = { v1_v = -5.0, v1 = -500, v2_v = -5.0, v2 = -500, h1_v = -5.0, h1 = -500, h2_v = -5.0, h2 = -500 }
+ave_num = 10
+smpl_freq = 1000
+smpl_num = 15
+single_diff = "DIFF"

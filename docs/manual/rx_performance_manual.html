@@ -71,6 +71,9 @@
 <tr><td>irr_measure.py</td><td>1組のバイアスで、両偏波の IRR と Trx を測る</td><td>スライダー</td><td>irr_measurement2.py</td></tr>
 <tr><td>yfactor_chopper.py</td><td>4つの IF系統の Trx を測る</td><td>チョッパー</td><td>yfactor_chopper_directon.py</td></tr>
 <tr><td>yfactor_hotcold.py</td><td>4つの IF系統の Trx と、その周波数特性を測る</td><td>スライダー</td><td>yfactor_sa_direction.py</td></tr>
+<tr><td>set_bias.py</td><td>4本の SISバイアスを設定する。<code>--tuned</code> で運用値</td><td>なし</td><td>set_sis_vol_direction.py</td></tr>
+<tr><td>set_loatt.py</td><td>LO減衰器の電流（H, V）を設定する</td><td>なし</td><td>set_loatt_level_direction-ver2.py</td></tr>
+<tr><td>pol_test.py</td><td>DA端子を1本ずつ 0 mV にして、どの IF系統の出力が変わるかを見る。素子名と偏波の対応を決めるため</td><td>なし（LO は必要）</td><td>なし（新規）</td></tr>
 <tr><td>settle_test.py</td><td>バイアスを変えてから Trx が落ち着くまでの時間を測る（trx_map の待ち時間を決めるため）</td><td>チョッパー</td><td>なし（新規）</td></tr>
 <tr><td>timing_test.py</td><td>バイアスの追従、スペアナの読み出しと掃引、IFスイッチの切り替わりにかかる時間を測る。LO も液体窒素も要らない</td><td>なし</td><td>なし（新規）</td></tr>
 <tr><td>iv_curve_measure.py</td><td>4本のミクサの IV カーブを測る。<code>--ros</code> で旧システムの換算</td><td>なし</td><td>sis_i-v_curve_direction.py</td></tr>
@@ -239,6 +242,15 @@ uv run python iv_curve_measure.py --ros    （旧システムの換算）</pre>
 <p>4本のミクサを1本ずつ −5 から 10 mV まで 0.1 mV 刻みで掃引し、電圧と電流を読む。開始前に条件が表示され、yes と打つと始まる。終わるとバイアスは 0 になる。
 2026-09 の設定は、旧システムと比べて DA の換算が 12% 低く、AD の読みが2倍になる。比べるときは <code>--ros</code> の結果を使う。</p>
 
+<h3>6.9 set_bias.py, set_loatt.py：設定だけを行う</h3>
+<pre>uv run python set_bias.py 6.4 7.3 7.3 6.3     （V1 H1 H2 V2 [mV]。--tuned で運用値）
+uv run python set_loatt.py 23 23              （H V [mA]）</pre>
+<p>値は終了後もそのまま残る。素子名、DA端子、換算は device_config_ros.toml に従う。</p>
+
+<h3>6.10 pol_test.py：素子名と偏波の対応</h3>
+<pre>uv run python pol_test.py</pre>
+<p>LO を入れた状態で、運用値のバイアスから DA端子を1本ずつ 0 mV にし、4つの IF系統の出力の変化（dB）を表にする。HU と HL が変われば H偏波、VU と VL が変われば V偏波のミクサである。終わるとバイアスは運用値に戻る。所要は約3分。</p>
+
 <h2>7. 解析（rx_performance_analysis.py）</h2>
 <p>測定スクリプトは最後に自動で解析する。解析だけやり直すときは、測定のフォルダを指定して実行する。</p>
 <pre>python rx_performance_analysis.py trx_map_261021_143005</pre>
@@ -287,7 +299,7 @@ uv run python iv_curve_measure.py --ros    （旧システムの換算）</pre>
 <tr><th>版</th><th>日付</th><th>内容</th></tr>
 <tr><td>0.1</td><td>2026-10-21</td><td>初版</td></tr>
 <tr><td>0.2</td><td>2026-10-21</td><td>TZ を知らない読者向けに全面改稿。測定準備、運用値を決める流れ、スペアナ設定（TZマニュアルに準拠）、平均の完了待ち、Trx の周波数特性を追加</td></tr>
-<tr><td>0.3</td><td>2026-10-21</td><td>settle_test、timing_test、iv_curve_measure と、irr_measure の PC 側平均を追加。置き場所を専用フォルダに。IFスイッチの動作を確定</td></tr>
+<tr><td>0.3</td><td>2026-10-21</td><td>settle_test、timing_test、iv_curve_measure、set_bias、set_loatt、pol_test と、irr_measure の PC 側平均を追加。置き場所を専用フォルダに。IFスイッチの動作を確定</td></tr>
 </table>
 <p>原稿は TZ-tools の docs/manual/rx_performance_manual.html。コードを変えたらここを直し、docs/manual/build_pdf.sh で PDF を作り直す。</p>
 

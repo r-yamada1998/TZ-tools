@@ -7,12 +7,17 @@ hand; the test signal comes from the Phase Matrix FSW-0020.
 
 Usage:
     cd ~/tz_workspace && uv run python irr_measure.py V1 H1 H2 V2 \
-        [--usb-freq 16.609] [--lsb-freq 14.609]
+        [--usb-freq 16.609] [--lsb-freq 14.609] [--soft-average N]
 
     V1 H1 H2 V2   SIS biases [mV], in the order of set_sis_vol_direction.py
     --usb-freq, --lsb-freq
                   test signal SG frequency [GHz] (asked if omitted, as in ROS).
                   The SG output is multiplied by 6 before the receiver.
+    --soft-average N
+                  average N sweeps on the PC instead of in the analyzer
+                  (not in ROS; off by default). The analyzer's averaging is
+                  turned off, every sweep is recorded, and the analysis gives
+                  the spread of the IRR between sweeps. See Rig.new_sweeps.
 
 Sequence (as in ROS): set the biases and turn the test signal off; with the
 COLD and then the HOT load, for HU, HL, VU, VL open the IF path, wait 10 s,
@@ -42,19 +47,24 @@ def main() -> None:
     p.add_argument("--lsb-freq", type=float)
     p.add_argument("--settle", type=float, default=10.0,
                    help="wait after switching the IF path [s] (ROS: 10)")
+    p.add_argument("--soft-average", type=int, default=0, metavar="N",
+                   help="average N separate sweeps on the PC (default: analyzer averaging)")
     tm.add_common_args(p)
     args = p.parse_args()
 
     rig = tm.start(args, use={"sis", "sa", "switch", "irr"})
     bias = {name: getattr(args, name) for name in tm.BIAS_NAMES}
+    if args.soft_average < 0:
+        raise SystemExit("--soft-average must be 0 or more.")
     if not args.keep_sa:
-        rig.setup_sa("sa_irr")
+        rig.setup_sa("sa_irr", average_off=args.soft_average > 0)
 
     rec = tm.Recorder("irr_measure", {
         **tm.base_meta(rig, args),
         "bias_mV": bias,
         "sa_params": rig.sa_params(),
-    }, columns=["load", "band", "signal_GHz"])
+        "soft_average": args.soft_average,
+    }, columns=["load", "band", "signal_GHz", "sweep", "t_s"])
 
     def sweep_bands(load: str, signal) -> None:
         for band in tm.BANDS:
@@ -62,7 +72,11 @@ def main() -> None:
             print("setting", band)
             tm.sleep(rig, args.settle)
             tm.ask_yes("ready?")
-            rec.add(rig.fresh_trace(), load=load, band=band, signal_GHz=signal)
+            if args.soft_average:
+                for k, (t, trace) in enumerate(rig.new_sweeps(args.soft_average)):
+                    rec.add(trace, load=load, band=band, signal_GHz=signal, sweep=k, t_s=t)
+            else:
+                rec.add(rig.fresh_trace(), load=load, band=band, signal_GHz=signal, sweep=0, t_s="")
             rig.close_band(band)
 
     try:

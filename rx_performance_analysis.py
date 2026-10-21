@@ -336,7 +336,14 @@ def irr_values(meta, rows):
     Returns {pol: dict(irr_usb_dB, irr_lsb_dB, trx_usb_K, trx_lsb_K)}.
     """
     thot, tcold = meta["thot"], meta["tcold"]
-    by = {(r["load"], r["band"]): r["trace"] for r in rows}
+    # Several rows per (load, band) when the sweeps were averaged on the PC
+    # (irr_measure --soft-average). They are averaged in dB; a common offset
+    # on HOT and COLD cancels in the formula, and the test tone is far above
+    # the noise, so dB or linear makes no practical difference here.
+    groups = {}
+    for r in rows:
+        groups.setdefault((r["load"], r["band"]), []).append(r["trace"])
+    by = {k: np.mean(v, axis=0) for k, v in groups.items()}
     result = {}
     for pol in ["H", "V"]:
         u, l = pol + "U", pol + "L"
@@ -365,12 +372,42 @@ def irr_values(meta, rows):
 def analyze_irr(run_dir, meta, rows):
     """irr_measure: HOT, COLD, USB and LSB test signal, four bands each."""
     res = irr_values(meta, rows)
+    spread = irr_spread(meta, rows)
+    keys = ("irr_usb_dB", "irr_lsb_dB", "trx_usb_K", "trx_lsb_K")
     out = []
     for pol, r in res.items():
         print(f"{pol}-pol: IRR_USB = {r['irr_usb_dB']:.2f} dB, IRR_LSB = {r['irr_lsb_dB']:.2f} dB, "
               f"Trx {pol}U = {r['trx_usb_K']:.1f} K, Trx {pol}L = {r['trx_lsb_K']:.1f} K")
-        out.append([pol] + [round(r[k], 3) for k in ("irr_usb_dB", "irr_lsb_dB", "trx_usb_K", "trx_lsb_K")])
-    write_result(run_dir, ["pol", "irr_usb_dB", "irr_lsb_dB", "trx_usb_K", "trx_lsb_K"], out)
+        row = [pol] + [round(r[k], 3) for k in keys]
+        if spread:
+            s = spread[pol]
+            print(f"       spread between sweeps (1 sigma): IRR_USB {s['irr_usb_dB']:.2f} dB, "
+                  f"IRR_LSB {s['irr_lsb_dB']:.2f} dB, Trx {s['trx_usb_K']:.1f} / {s['trx_lsb_K']:.1f} K")
+            row += [round(s[k], 3) for k in keys]
+        out.append(row)
+    header = ["pol", *keys] + ([f"{k}_sigma" for k in keys] if spread else [])
+    write_result(run_dir, header, out)
+
+
+def irr_spread(meta, rows, n_boot: int = 200, seed: int = 0):
+    """
+    Uncertainty of irr_values when several sweeps were recorded per (load,
+    band): standard deviation over bootstrap resamplings of the sweeps.
+    None when there is only one trace per (load, band).
+    """
+    groups = {}
+    for r in rows:
+        groups.setdefault((r["load"], r["band"]), []).append(r)
+    if max(len(g) for g in groups.values()) < 2:
+        return None
+    rng = np.random.default_rng(seed)
+    samples = []
+    for _ in range(n_boot):
+        resampled = [g[i] for g in groups.values() for i in rng.integers(len(g), size=len(g))]
+        samples.append(irr_values(meta, resampled))
+    return {pol: {k: float(np.nanstd([s[pol][k] for s in samples]))
+                  for k in samples[0][pol]}
+            for pol in samples[0]}
 
 
 def irr_map(run_dirs, out_dir) -> None:

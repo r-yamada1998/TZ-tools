@@ -223,9 +223,14 @@ class Rig:
 
     # --- Spectrum analyzer -----------------------------------------------
 
-    def setup_sa(self, profile: str) -> None:
-        """profile is "sa_chopper", "sa_slider" or "sa_irr" from [measurement]."""
+    def setup_sa(self, profile: str, average_off: bool = False) -> None:
+        """
+        profile is "sa_chopper", "sa_slider" or "sa_irr" from [measurement].
+        average_off turns the analyzer's own averaging off, for new_sweeps().
+        """
         params = dict(self.m[profile])
+        if average_off:
+            params["average_onoff"] = "OFF"
         self._averaging = str(params.get("average_onoff", "OFF")).upper() == "ON"
         self._average_num = int(params.get("average_num", 1))
         if self.dry_run:
@@ -253,6 +258,47 @@ class Rig:
             print(f"waiting {wait:.0f} s for {self._average_num} averaged sweeps")
             time.sleep(wait)
         return self.trace()
+
+    def new_sweeps(self, n: int, discard: int = 1, poll: float = 0.05) -> list:
+        """
+        n traces from n separate sweeps, none of which began before this call.
+        For averaging on the PC side instead of in the analyzer: the result
+        shows that no sweep from before a change is mixed in, and the spread
+        between sweeps gives the uncertainty of every measurement.
+
+        Needs the analyzer's averaging off (setup_sa(..., average_off=True)).
+        The trace is read over and over; a change in its content marks a
+        finished sweep. The first `discard` sweeps are dropped, since the
+        sweep in progress at the time of the call began before it.
+        Returns [(seconds since the call, trace), ...].
+        """
+        if self.dry_run:
+            return [(0.0, self._fake.trace()) for _ in range(n)]
+        self.sa.com.open()
+        try:
+            sweep = float(self.sa.sa.sweep_time_query())
+        finally:
+            self.sa.com.close()
+        timeout = 3 * sweep + 5.0
+        t0 = t_change = time.monotonic()
+        last = self.trace()
+        out, skipped = [], 0
+        while len(out) < n:
+            time.sleep(poll)
+            tr = self.trace()
+            now = time.monotonic()
+            if np.array_equal(tr, last):
+                if now - t_change > timeout:
+                    raise RuntimeError(
+                        f"No new sweep for {timeout:.0f} s (sweep time {sweep} s). "
+                        "Is the analyzer sweeping continuously?")
+                continue
+            last, t_change = tr, now
+            if skipped < discard:
+                skipped += 1
+                continue
+            out.append((round(now - t0, 3), tr))
+        return out
 
     def sa_params(self) -> dict:
         if self.dry_run:

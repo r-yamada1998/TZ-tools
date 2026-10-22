@@ -11,9 +11,14 @@ H mixers changes HU and HL, one that feeds V changes VU and VL.
 
 Usage (in the folder that holds this script):
     uv run python pol_test.py [--settle 4] [--read 2]
+    uv run python pol_test.py --bias 8.5 8.5 8.5 8.5      LO off
 
-Needs: LO on, SIS bias switch on OPERATE. The chopper may stand still. Biases
-are left at the operating values of device_config_ros.toml.
+Needs: SIS bias switch on OPERATE. The chopper may stand still. Without
+--bias: LO on, and the biases are left at the operating values of
+device_config_ros.toml. With --bias the LO may be off: above the gap voltage
+the junction is no longer superconducting, so its IF output differs from that
+at 0 mV even without LO. This also shows whether the IF switch switches.
+The biases are left at 0 mV.
 
 Output: pol_test_<YYMMDD_HHMMSS>/levels.csv and the table on screen.
 """
@@ -45,14 +50,20 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     p.add_argument("--settle", type=float, default=4.0, help="wait after switching the IF band [s]")
     p.add_argument("--read", type=float, default=2.0, help="read traces for this long per band [s]")
+    p.add_argument("--bias", nargs=4, type=float, metavar="MV",
+                   help="V1 H1 H2 V2 [mV] instead of the operating values; biases end at 0")
     tm.add_common_args(p)
     args = p.parse_args()
 
     rig = tm.start(args, use={"sis", "sa", "switch"})
     tuned = dict(rig.cfg["sis_bias_setter"]["tuned"])
+    if args.bias:
+        tuned = dict(zip(tm.BIAS_NAMES, args.bias))
+    final = {name: 0.0 for name in tm.BIAS_NAMES} if args.bias else tuned
     ch = rig.cfg["sis_bias_setter"]["channel"]
     rig.setup_sa("sa_chopper", average_off=True)
-    tm.ask_yes("LO on and SIS bias switch on OPERATE. Start")
+    print("biases for the test: " + ", ".join(f"{k} = {v} mV" for k, v in tuned.items()))
+    tm.ask_yes(("LO may be off" if args.bias else "LO on") + " and SIS bias switch on OPERATE. Start")
 
     out_dir = pathlib.Path(".") / f"pol_test_{datetime.datetime.now().strftime('%y%m%d_%H%M%S')}"
     out_dir.mkdir()
@@ -77,8 +88,8 @@ def main() -> None:
             rows += [[name, ch[name], b, round(lv[b], 3), round(lv[b] - base[b], 3)] for b in tm.BANDS]
             print(f"{name} ({ch[name]}) at 0 mV: " + ", ".join(f"{b} {d:+.2f} dB" for b, d in table[name].items()))
     finally:
-        rig.set_bias(**tuned)
-        print("SIS biases back at the operating values: " + ", ".join(f"{k} = {v}" for k, v in tuned.items()))
+        rig.set_bias(**final)
+        print("SIS biases left at: " + ", ".join(f"{k} = {v}" for k, v in final.items()))
 
     with (out_dir / "levels.csv").open("w") as f:
         f.write("zeroed,da_channel,band,level_dBm,change_dB\n")

@@ -328,6 +328,24 @@ class Rig:
             out.append((round(now - t0, 3), tr))
         return out
 
+    def set_continuous(self, on: bool) -> None:
+        """INIT:CONT ON / OFF. Leave it ON at the end of a run (the usual state)."""
+        if not self.dry_run:
+            self.sa.com.send("INIT:CONT " + ("ON" if on else "OFF"))
+
+    def single_trace(self) -> np.ndarray:
+        """
+        Start one sweep, wait until the analyzer reports it finished, then read
+        the trace. Needs set_continuous(False). Unlike new_sweeps(), this does
+        not guess the end of a sweep from the trace content, so the trace
+        surely comes from a sweep that began after the call.
+        """
+        if self.dry_run:
+            return self._fake.trace()
+        self.sa.com.send("INIT:IMM;*OPC?")
+        self.sa.com.readline()
+        return self.trace()
+
     def sa_params(self) -> dict:
         if self.dry_run:
             return dict(self._fake.sa_params)

@@ -20,7 +20,12 @@ the junction is no longer superconducting, so its IF output differs from that
 at 0 mV even without LO. This also shows whether the IF switch switches.
 The biases are left at 0 mV.
 
-Output: pol_test_<YYMMDD_HHMMSS>/levels.csv and the table on screen.
+The bias monitors (voltage and current of each junction, AD ch9-16) are read
+after every change, so that the table also shows that the biases were really
+applied. They are labelled by DA terminal, since the names differ between the
+ROS writer and reader.
+
+Output: pol_test_<YYMMDD_HHMMSS>/levels.csv, monitors.csv and the table on screen.
 """
 
 import argparse
@@ -31,6 +36,30 @@ import time
 import numpy as np
 
 import rx_performance_common as tm
+
+HERE = pathlib.Path(__file__).resolve().parent
+IV_CONFIG = str(HERE / "device_config_iv_ros.toml")   # reader names: v1 = DA ch5
+
+
+def open_monitor(dry_run: bool):
+    """Reader of all four bias monitors, voltage channels registered first."""
+    if dry_run:
+        return None
+    import sys
+    sys.path.insert(0, str(HERE))
+    from sis_reader_multi import SISReaderMulti
+    reader = SISReaderMulti(device_name="sis_bias_reader", config_file=IV_CONFIG)
+    names = ["v1", "h1", "h2", "v2"]
+    reader.setup(**{f"{n}_v": True for n in names}, **{n: True for n in names})
+    return reader
+
+
+def read_monitor(reader, da_of: dict) -> dict:
+    """{DA terminal: (mV, uA)}"""
+    if reader is None:
+        return {}
+    r = reader.run()
+    return {da_of[n]: (r[f"{n}_v"], r[n]) for n in ("v1", "h1", "h2", "v2")}
 
 
 def level(rig, band: str, settle: float, read: float) -> float:
@@ -62,6 +91,17 @@ def main() -> None:
     final = {name: 0.0 for name in tm.BIAS_NAMES} if args.bias else tuned
     ch = rig.cfg["sis_bias_setter"]["channel"]
     rig.setup_sa("sa_chopper", average_off=True)
+    reader = open_monitor(args.dry_run)
+    with open(IV_CONFIG, "rb") as f:
+        import tomllib
+        da_of = tomllib.load(f)["sis_bias_setter"]["channel"]
+    mon_rows = []
+
+    def monitor(label: str) -> None:
+        m = read_monitor(reader, da_of)
+        if m:
+            print(f"  monitors ({label}): " + ", ".join(f"{d} {v:.2f} mV {i:.1f} uA" for d, (v, i) in sorted(m.items())))
+            mon_rows.extend([label, d, round(v, 3), round(i, 2)] for d, (v, i) in sorted(m.items()))
     print("biases for the test: " + ", ".join(f"{k} = {v} mV" for k, v in tuned.items()))
     tm.ask_yes(("LO may be off" if args.bias else "LO on") + " and SIS bias switch on OPERATE. Start")
 
@@ -71,6 +111,7 @@ def main() -> None:
     try:
         rig.set_bias(**tuned)
         tm.sleep(rig, 2.0)
+        monitor("all set")
         base = {b: level(rig, b, args.settle, args.read) for b in tm.BANDS}
         rows += [["none", "", b, round(base[b], 3), 0.0] for b in tm.BANDS]
         print("operating values: " + ", ".join(f"{b} {v:.2f} dBm" for b, v in base.items()))
@@ -82,6 +123,7 @@ def main() -> None:
         for name in tm.BIAS_NAMES:
             rig.set_bias(**{name: 0.0})
             tm.sleep(rig, 1.0)
+            monitor(f"{name} at 0")
             lv = {b: level(rig, b, args.settle, args.read) for b in tm.BANDS}
             rig.set_bias(**{name: tuned[name]})
             table[name] = {b: lv[b] - base[b] for b in tm.BANDS}
@@ -90,7 +132,15 @@ def main() -> None:
     finally:
         rig.set_bias(**final)
         print("SIS biases left at: " + ", ".join(f"{k} = {v}" for k, v in final.items()))
+        if reader is not None:
+            time.sleep(0.5)
+            monitor("end")
+            reader.teardown()
 
+    with (out_dir / "monitors.csv").open("w") as f:
+        f.write("state,da_channel,v_mV,i_uA\n")
+        for r in mon_rows:
+            f.write(",".join(str(x) for x in r) + "\n")
     with (out_dir / "levels.csv").open("w") as f:
         f.write("zeroed,da_channel,band,level_dBm,change_dB\n")
         for r in rows:
@@ -101,7 +151,9 @@ def main() -> None:
     for name, d in table.items():
         h = abs(d["HU"]) + abs(d["HL"])
         v = abs(d["VU"]) + abs(d["VL"])
-        feeds = "H" if h > 2 * v else "V" if v > 2 * h else "unclear"
+        # h and v add two bands, so 1.0 means about 0.5 dB per band; the scatter
+        # of the levels was up to 0.07 dB on 2026-10-22.
+        feeds = "none" if max(h, v) < 1.0 else "H" if h > 2 * v else "V" if v > 2 * h else "unclear"
         print(f"{name:<5} {ch[name]:<6} " + "  ".join(f"{d[b]:+6.2f}" for b in tm.BANDS) + f"   {feeds}")
     print(f"\nSaved: {out_dir}/levels.csv")
 

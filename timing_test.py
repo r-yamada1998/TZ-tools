@@ -13,13 +13,17 @@ Four short tests that decide the waits used by the measurement scripts:
   if      IF switch: the path is switched back and forth between the two
           bands whose noise levels differ most, and traces are read back to
           back. Tells when the new band shows up in the trace.
+  single  Rig.single_trace: one sweep started by the PC, read when the
+          analyzer reports it finished (INIT:IMM;*OPC?). Time per trace for
+          both settings, and whether every trace is new. The analyzer is set
+          back to continuous sweep at the end.
   soft    Rig.new_sweeps (irr_measure --soft-average) on the real analyzer:
           after an IF switch, are the kept sweeps about one update cycle
           (1.3-1.6 s, measured on 2026-10-22) apart and all at the new band's
           level.
 
 Usage (in the folder that holds this script):
-    uv run python timing_test.py [--only bias,sa,if,soft] [--bias-low 2.0] [--bias-high 3.0]
+    uv run python timing_test.py [--only bias,sa,if,single,soft] [--bias-low 2.0] [--bias-high 3.0]
 
 The bias test uses device_config_iv_ros.toml (ROS conversions, reader names);
 the other tests use device_config_ros.toml. All biases are 0 at the end.
@@ -266,6 +270,33 @@ def test_soft(out: Out, rig, bands: tuple, levels: dict, repeat: int, n: int) ->
             "Levels are from the chopper settings run, so the IRR span may shift them a little.")
 
 
+def test_single(out: Out, rig, n: int) -> None:
+    out.say(f"== single sweep: {n} traces per setting, each from its own sweep (INIT:IMM;*OPC?) ==")
+    rows = []
+    try:
+        for profile in ("sa_chopper", "sa_irr"):
+            rig.setup_sa(profile, average_off=True)
+            rig.set_continuous(False)
+            time.sleep(0 if rig.dry_run else 1.0)
+            sw = sweep_time(rig)
+            prev, times, same = None, [], 0
+            for k in range(n):
+                a = time.monotonic()
+                tr = rig.single_trace()
+                dt = time.monotonic() - a
+                times.append(dt)
+                if prev is not None and np.array_equal(tr, prev):
+                    same += 1
+                prev = tr
+                rows.append([profile, k, round(dt, 4), round(float(np.mean(tr)), 3)])
+            out.say(f"  {profile}: sweep time {sw:.3f} s; one triggered trace took {np.median(times):.3f} s "
+                    f"(min {np.min(times):.3f}, max {np.max(times):.3f}); identical to the previous: {same} of {n - 1}")
+    finally:
+        rig.set_continuous(True)
+        out.say("  analyzer back to continuous sweep")
+    out.csv("single_sweep.csv", ["profile", "k", "time_s", "mean_dBm"], rows)
+
+
 def _pyplot():
     try:
         import matplotlib
@@ -278,14 +309,14 @@ def _pyplot():
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[1])
-    p.add_argument("--only", default="bias,sa,if,soft", help="comma separated: bias,sa,if,soft")
+    p.add_argument("--only", default="bias,sa,if,soft", help="comma separated: bias,sa,if,single,soft")
     p.add_argument("--bias-low", type=float, default=2.0, help="[mV]")
     p.add_argument("--bias-high", type=float, default=3.0, help="[mV]")
     p.add_argument("--repeat", type=int, default=4, help="bias steps per mixer and IF switches")
     tm.add_common_args(p)
     args = p.parse_args()
     tests = set(args.only.split(","))
-    unknown = tests - {"bias", "sa", "if", "soft"}
+    unknown = tests - {"bias", "sa", "if", "single", "soft"}
     if unknown:
         raise SystemExit(f"Unknown test: {', '.join(sorted(unknown))}")
 
@@ -298,10 +329,12 @@ def main() -> None:
     if "bias" in tests:
         test_bias(out, args.bias_low, args.bias_high, args.repeat, 1.5, args.dry_run)
 
-    if tests & {"sa", "if", "soft"}:
+    if tests & {"sa", "if", "single", "soft"}:
         rig = tm.start(args, use={"sa", "switch"})
         if "sa" in tests:
             test_sa(out, rig, 15.0)
+        if "single" in tests:
+            test_single(out, rig, 10)
         bands, levels = ("HU", "VU"), None
         if "if" in tests or "soft" in tests:
             a, b, levels = test_if(out, rig, args.repeat, 10.0) if "if" in tests else (None, None, None)

@@ -14,8 +14,9 @@ Four short tests that decide the waits used by the measurement scripts:
           bands whose noise levels differ most, and traces are read back to
           back. Tells when the new band shows up in the trace.
   soft    Rig.new_sweeps (irr_measure --soft-average) on the real analyzer:
-          after an IF switch, are the kept sweeps one sweep time apart and all
-          at the new band's level.
+          after an IF switch, are the kept sweeps about one update cycle
+          (1.3-1.6 s, measured on 2026-10-22) apart and all at the new band's
+          level.
 
 Usage (in the folder that holds this script):
     uv run python timing_test.py [--only bias,sa,if,soft] [--bias-low 2.0] [--bias-high 3.0]
@@ -219,7 +220,8 @@ def test_if(out: Out, rig, repeat: int, watch: float) -> tuple:
     diff = abs(lv[a] - lv[b])
     out.say(f"  using {a} and {b}, {diff:.2f} dB apart")
     if diff < 0.3:
-        out.say("  difference too small to time the switch; skipped")
+        out.say("  difference too small to time the switch; skipped. If all four bands agree within"
+                " about 0.1 dB, the IF switch may not be switching at all.")
         return a, b, lv
     rows, lags = [], []
     rig.open_band(a)
@@ -260,7 +262,7 @@ def test_soft(out: Out, rig, bands: tuple, levels: dict, repeat: int, n: int) ->
                 f"level {', '.join(f'{m:.2f}' for m in means)} dBm ({', '.join(nearer)})")
         rows += [[k + 1, target, j, t, round(m, 3)] for j, (t, m) in enumerate(zip(times, means))]
     out.csv("soft_average.csv", ["switch", "to", "sweep", "t_s", "mean_dBm"], rows)
-    out.say(f"  sweep time reported {sw:.2f} s. Expected: sweeps about that far apart, all 'new'. "
+    out.say(f"  sweep time reported {sw:.2f} s. Expected: sweeps 1.3-1.6 s apart (the update cycle), all 'new'. "
             "Levels are from the chopper settings run, so the IRR span may shift them a little.")
 
 

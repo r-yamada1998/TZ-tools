@@ -63,6 +63,10 @@ def main() -> None:
         base = {b: level(rig, b, args.settle, args.read) for b in tm.BANDS}
         rows += [["none", "", b, round(base[b], 3), 0.0] for b in tm.BANDS]
         print("operating values: " + ", ".join(f"{b} {v:.2f} dBm" for b, v in base.items()))
+        if max(base.values()) - min(base.values()) < 0.1:
+            # On 2026-10-22 (LO off) all four bands agreed within 0.05 dB.
+            print("WARNING: all four bands agree within 0.1 dB. The IF switch may not be switching;"
+                  " then every row below changes all bands alike.")
         table = {}
         for name in tm.BIAS_NAMES:
             rig.set_bias(**{name: 0.0})

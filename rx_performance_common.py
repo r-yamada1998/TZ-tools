@@ -275,7 +275,7 @@ class Rig:
             time.sleep(wait)
         return self.trace()
 
-    def new_sweeps(self, n: int, discard: int = 1, poll: float = 0.05) -> list:
+    def new_sweeps(self, n: int, warmup: float = 2.0, min_gap: float = 1.0, poll: float = 0.05) -> list:
         """
         n traces from n separate sweeps, none of which began before this call.
         For averaging on the PC side instead of in the analyzer: the result
@@ -284,8 +284,16 @@ class Rig:
 
         Needs the analyzer's averaging off (setup_sa(..., average_off=True)).
         The trace is read over and over; a change in its content marks a
-        finished sweep. The first `discard` sweeps are dropped, since the
-        sweep in progress at the time of the call began before it.
+        finished sweep.
+
+        Measured on 2026-10-22 (timing_test): while traces are read back to
+        back, the content changes every 1.3 s (chopper settings) or 1.6 s
+        (IRR settings), not every sweep time (0.3 or 0.47 s). In the first
+        second after a pause in reading, it changed every 0.2 s, faster than
+        one sweep, so those changes are not whole new sweeps; the cause is not
+        known. Hence everything read during `warmup` seconds is dropped, and a
+        change counts only if it comes at least `min_gap` seconds after the
+        previous one.
         Returns [(seconds since the call, trace), ...].
         """
         if self.dry_run:
@@ -295,10 +303,14 @@ class Rig:
             sweep = float(self.sa.sa.sweep_time_query())
         finally:
             self.sa.com.close()
-        timeout = 3 * sweep + 5.0
-        t0 = t_change = time.monotonic()
+        timeout = 3 * max(sweep, min_gap) + 5.0
+        t0 = time.monotonic()
         last = self.trace()
-        out, skipped = [], 0
+        while time.monotonic() - t0 < warmup:
+            time.sleep(poll)
+            last = self.trace()
+        t_change = time.monotonic()
+        out = []
         while len(out) < n:
             time.sleep(poll)
             tr = self.trace()
@@ -309,10 +321,10 @@ class Rig:
                         f"No new sweep for {timeout:.0f} s (sweep time {sweep} s). "
                         "Is the analyzer sweeping continuously?")
                 continue
-            last, t_change = tr, now
-            if skipped < discard:
-                skipped += 1
+            last = tr
+            if now - t_change < min_gap:
                 continue
+            t_change = now
             out.append((round(now - t0, 3), tr))
         return out
 

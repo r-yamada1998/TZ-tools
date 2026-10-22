@@ -144,6 +144,8 @@ class Rig:
         if "sa" in use:
             from tz_controller.speana_controller import SpectrumAnalyzer
             self.sa = SpectrumAnalyzer(device_name="spectrum_analyzer", config_file=CONFIG_FILE)
+            if not dry_run:
+                self._keep_sa_open()
         if "switch" in use:
             from tz_controller.if_switch import IFSwitch
             self.switch = IFSwitch(device_name="if_switch", config_file=CONFIG_FILE)
@@ -222,6 +224,20 @@ class Rig:
             self._irr_com.close()
 
     # --- Spectrum analyzer -----------------------------------------------
+
+    def _keep_sa_open(self) -> None:
+        """
+        On 2026-10-22 (sa_check.py) the analyzer answered *IDN? at once, but
+        other queries sent on a new connection only after about 4 s, longer
+        than ogameasure's 3 s timeout. tz_controller opens and closes the
+        connection around every call; the ROS node kept one open and read a
+        trace every 0.11 s. So one connection is opened here and kept for the
+        whole run (close() does nothing), with a longer timeout as a margin.
+        """
+        com = self.sa.com
+        com.timeout = 15
+        com.open()
+        com.close = lambda: None
 
     def setup_sa(self, profile: str, average_off: bool = False) -> None:
         """

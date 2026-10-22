@@ -85,12 +85,15 @@ def test_bias(out: Out, low: float, high: float, repeat: int, watch: float, dry:
         from sis_reader_multi import SISReaderMulti
         setter = SISSetter(device_name="sis_bias_setter", config_file=IV_CONFIG)
         reader = SISReaderMulti(device_name="sis_bias_reader", config_file=IV_CONFIG)
+        # All eight channels once, voltage channels first. On 2026-10-22 the
+        # reader was set up again for each mixer; the AD board kept sampling
+        # the first set (v1) while running, so h1, h2 and v2 read v1's monitor.
+        reader.setup(**{f"{m}_v": True for m in MIXERS}, **{m: True for m in MIXERS})
 
     rows = []
     try:
         for mixer in MIXERS:
             if not dry:
-                reader.setup(**{f"{mixer}_v": True, mixer: True})
                 setter.setup(**{mixer: low})
                 setter.run()
             time.sleep(0 if dry else 2.0)
@@ -128,15 +131,21 @@ def test_bias(out: Out, low: float, high: float, repeat: int, watch: float, dry:
     # Per mixer: time after which the voltage stays within 10 % of the step of its final value
     a = np.array([[MIXERS.index(r[0]), r[1], r[2], r[3], r[4]] for r in rows], dtype=float)
     for k, mixer in enumerate(MIXERS):
-        times, reads = [], []
+        times, reads, finals = [], [], {low: [], high: []}
         for step in np.unique(a[a[:, 0] == k, 1]):
             s = a[(a[:, 0] == k) & (a[:, 1] == step)]
             t, v = s[:, 3], s[:, 4]
             final = np.median(v[t > watch / 2])
+            finals[s[0, 2]].append(final)
             off = np.abs(v - final) > 0.1 * (high - low)
             idx = np.nonzero(off)[0]
             times.append(0.0 if len(idx) == 0 else (t[idx[-1] + 1] if idx[-1] + 1 < len(t) else np.nan))
             reads.append(np.median(np.diff(t)) if len(t) > 1 else np.nan)
+        seen = np.median(finals[high]) - np.median(finals[low])
+        if seen < 0.5 * (high - low):
+            out.say(f"  {mixer}: the monitor moved only {seen:.3f} mV for a {high - low} mV step; "
+                    "no settling time (check the bias and the reader)")
+            continue
         out.say(f"  {mixer}: settled (within 10 % of the step) after {np.nanmax(times):.3f} s at worst, "
                 f"median {np.nanmedian(times):.3f} s; one read every {np.nanmedian(reads) * 1000:.0f} ms")
 

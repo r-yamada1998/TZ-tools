@@ -183,10 +183,20 @@ class Rig:
     # --- IF switch ------------------------------------------------------
 
     def open_band(self, band: str) -> None:
-        """ROS switch.set_open_ch(band)."""
+        """
+        Select one IF band. The ROS Trx map script selected the band with
+        set_open_ch followed at once by set_close_ch and then measured for
+        44 min, so the switch keeps its position after the pair: the 11713B
+        gives the switch a drive pulse. Sending only the open for one band
+        after another, as pol_test and timing_test did until 2026-10-22,
+        leaves the drives of several positions on together; all four bands
+        then read alike (within 0.05 dB on 2026-10-22).
+        """
         if not self.dry_run:
-            # IFSwitch.open() is fine; called through .sw to mirror close_band.
-            self.switch.sw.switch_open(self.m["if_switch_path"][band])
+            path = self.m["if_switch_path"][band]
+            self.switch.sw.switch_open(path)
+            time.sleep(0.1)
+            self.switch.sw.switch_close(path)
         self.band = band
 
     def close_band(self, band: str) -> None:

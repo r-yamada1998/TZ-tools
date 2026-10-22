@@ -239,7 +239,7 @@ uv run python trx_map.py HL --bias1 6.0 8.0 21 --bias2 6.0 8.0 21</pre>
 <h3>6.8 iv_curve_measure.py：IV カーブ</h3>
 <pre>uv run python iv_curve_measure.py          （2026-09 と同じ換算）
 uv run python iv_curve_measure.py --ros    （旧システムの換算）</pre>
-<p>4本のミクサを1本ずつ −5 から 10 mV まで 0.1 mV 刻みで掃引し、電圧と電流を読む。開始前に条件が表示され、yes と打つと始まる。終わるとバイアスは 0 になる。
+<p>4本のミクサを1本ずつ −5 から 10 mV まで（<code>--ros</code> では −4.9 から）0.1 mV 刻みで掃引し、電圧と電流を読む。開始前に条件が表示され、yes と打つと始まる。終わるとバイアスは 0 になる。
 2026-09 の設定は、旧システムと比べて DA の換算が 12% 低く、AD の読みが2倍になる。比べるときは <code>--ros</code> の結果を使う。</p>
 
 <h3>6.9 set_bias.py, set_loatt.py：設定だけを行う</h3>

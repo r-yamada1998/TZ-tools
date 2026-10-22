@@ -51,7 +51,9 @@ CONFIG_FILE = str(HERE / ("device_config_iv_ros.toml" if ROS else "device_config
 
 MIXERS = ["v1", "v2", "h1", "h2"]
 
-V_START = -5.0   # mV
+# --ros では指令＝実電圧なので、下限 -5 mV に余裕を持たせて -4.9 から始める
+# （2026-10-22 の --ros で負端の読みが -5.02〜-5.05 mV だった）。
+V_START = -4.9 if ROS else -5.0   # mV
 V_STOP = 10.0    # mV
 V_STEP = 0.1     # mV
 SETTLE_TIME = 0.05  # s

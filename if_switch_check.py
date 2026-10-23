@@ -17,9 +17,18 @@ times).
 Usage (in the folder that holds this script):
     uv run python if_switch_check.py
 
+Run it with the LO on as well: then the four bands should read differently
+if the switch really selects them.
+
 Changes nothing but the selected IF band and, for the duration of the run,
 the analyzer settings (chopper settings, back to continuous sweep at the end).
 Output: on screen, and if_switch_check_<YYMMDD_HHMMSS>.txt.
+
+On 2026-10-23 the first query after *IDN? (CONFigure:BANK1?) timed out, and
+every later query failed with "cannot read from timed out object": once a
+read times out, the socket file of ogameasure.ethernet cannot be read again.
+A failed query now reconnects and asks SYST:ERR?, so that each query gets its
+own answer and the reason for a missing answer is seen.
 """
 
 import argparse
@@ -29,8 +38,9 @@ import numpy as np
 
 import rx_performance_common as tm
 
-PATHS = "(@101:110)"
-IF_PATHS = "(@105:108)"
+# the explicit list form, as the ogameasure driver writes it
+PATHS = "(@101,102,103,104,105,106,107,108,109,110)"
+IF_PATHS = "(@105,106,107,108)"
 
 
 class Out:
@@ -54,7 +64,23 @@ def ask(rig, cmd: str) -> str:
         com.send(cmd)
         return com.readline().strip()
     except Exception as e:  # a timeout here is itself the answer
-        return f"no answer ({type(e).__name__}: {e})"
+        reconnect(com)
+        try:
+            com.send("SYST:ERR?")
+            err = com.readline().strip()
+        except Exception:
+            reconnect(com)
+            err = "no answer either"
+        return f"no answer ({type(e).__name__}: {e}); SYST:ERR? -> {err}"
+
+
+def reconnect(com) -> None:
+    """A timed-out read leaves the socket file unreadable; start a new one."""
+    try:
+        com.close()
+    except Exception:
+        pass
+    com.open()
 
 
 def level(rig) -> float:
@@ -70,6 +96,7 @@ def main() -> None:
     out = Out()
     out.say(f"if_switch_check {datetime.datetime.now().isoformat()}  dry run: {args.dry_run}")
     out.say(f"  *IDN?                  {ask(rig, '*IDN?')}")
+    out.say(f"  errors before          {ask(rig, 'SYST:ERR?')}")
     out.say(f"  bank 1 drive supply    {ask(rig, 'CONFigure:BANK1?')}")
     out.say(f"  bank 1 TTL drive       {ask(rig, 'CONFigure:BANK1:TTL?')}")
     out.say(f"  open?  101-110         {ask(rig, ':ROUTe:OPEn? ' + PATHS)}")

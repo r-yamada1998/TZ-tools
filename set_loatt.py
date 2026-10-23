@@ -5,6 +5,9 @@ Set the LO attenuator currents, as the ROS script set_loatt_level_direction-ver2
 Usage (in the folder that holds this script):
     uv run python set_loatt.py H V        [mA], e.g. 23 23 (ROS operating values)
 
+A larger current attenuates more. After the work, 70 70 leaves the LO weak
+while the 1st LO is switched (advice of the receiver developer).
+
 Ports follow measurement.loatt_port in device_config_ros.toml (H = GPIB 4,
 V = GPIB 5). The values stay after the script ends.
 """
@@ -22,8 +25,9 @@ def main() -> None:
     args = p.parse_args()
 
     for value in (args.h, args.v):
-        if not 0.0 <= value <= 40.0:
-            raise SystemExit(f"Aborted: {value} mA is outside 0-40 mA.")
+        # The input range of the ROS script (TZ manual 3.3: 0-100 mA)
+        if not 0.0 <= value <= 100.0:
+            raise SystemExit(f"Aborted: {value} mA is outside 0-100 mA.")
     rig = tm.start(args, use={"loatt"})
     rig.set_loatt("H", args.h)
     rig.set_loatt("V", args.v)

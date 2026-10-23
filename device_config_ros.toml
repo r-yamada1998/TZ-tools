@@ -18,12 +18,17 @@ rsw_id = 0
 # confirmed in the 2025-09 logs: DA output = command / 2.82. With this the
 # physical junction voltage equals the command within 1 %.
 conversion_factor = 0.3546099290780142
-# Same as the ROS launch that actually ran from 2020-05 to the end of ROS
-# operation. Note: v1 and h2 here are swapped relative to the ROS *reader*
-# naming and to the new system's device_config.toml. Which naming matches the
-# physical polarization is not settled yet; until then these scripts follow
-# the ROS writer, so that ROS-era values reproduce.
-channel = { v1 = "ch7", h1 = "ch6", h2 = "ch5", v2 = "ch8" }
+# Mixer names by the junction they bias, identified by its monitor (AD pair):
+# v1 = AD ch9/10, h1 = ch11/12, h2 = ch13/14, v2 = ch15/16. In the 2025-09 ROS
+# Trx maps, bias1 (ROS v1 and h1) moved the monitors at AD ch9/10 and 11/12 and
+# bias2 (h2, v2) those at 13/14 and 15/16, so the ROS writer drove these
+# junctions under these names, although its launch said v1 = ch7, h2 = ch5.
+# On the present FAC, DA ch5 drives AD ch9/10 and ch7 drives 13/14 (pol_test,
+# 2026-10-23), hence v1 = ch5, h2 = ch7, as in ~/tz_workspace/device_config.toml.
+# pol_test also found V = v1, v2 and H = h1, h2, so the names are physical.
+# Until 2026-10-23 this file had v1 = ch7, h2 = ch5 (the ROS launch numbers),
+# which put 6.4 on h2 and 7.3 on v1.
+channel = { v1 = "ch5", h1 = "ch6", h2 = "ch7", v2 = "ch8" }
 # ROS used "5V". The range only sets the resolution of the DA output (5 mV
 # here, 0.014 mV at the junction), not its value, so "10V" reproduces ROS just
 # as well. It is kept equal to ~/tz_workspace/device_config.toml on purpose:

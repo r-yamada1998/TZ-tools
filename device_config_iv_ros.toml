@@ -9,8 +9,8 @@
 #   current monitor    -500 uA/V               -500 uA/V (sis_bias_i_reader.conf)
 #
 # The mixer names here follow the AD pairs found on 2026-09-04
-# (v1 = DA ch5 -> AD ch9/ch10 ...), i.e. the ROS reader naming, not the ROS
-# writer naming used by device_config_ros.toml (see that file).
+# (v1 = DA ch5 -> AD ch9/ch10 ...), the same names as device_config_ros.toml
+# since 2026-10-23 (see that file).
 #
 # Inline tables { } must stay on one line.
 
@@ -21,10 +21,9 @@ conversion_factor = 0.3546099290780142
 channel = { v1 = "ch5", v2 = "ch8", h1 = "ch6", h2 = "ch7" }
 # Kept at "10V" like the running setup; the DA range only sets resolution.
 range = { v1 = "10V", v2 = "10V", h1 = "10V", h2 = "10V" }
-# ROS operating values 6.4/7.3/7.3/6.3 (writer names v1 h1 h2 v2 = DA ch7 ch6
-# ch5 ch8), written per DA terminal in the names of this file. Only drawn as
-# reference lines on the IV plot.
-tuned = { v1 = 7.3, h1 = 7.3, h2 = 6.4, v2 = 6.3 }
+# ROS operating values (set_sis_vol_direction.py 6.4 7.3 7.3 6.3). Only drawn
+# as reference lines on the IV plot.
+tuned = { v1 = 6.4, h1 = 7.3, h2 = 7.3, v2 = 6.3 }
 
 [sis_bias_reader]
 _ = "CPZ3177"

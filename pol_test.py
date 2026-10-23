@@ -2,9 +2,9 @@
 """
 Which IF bands each SIS bias terminal feeds: settles the polarization naming.
 
-v1 and h2 are swapped between the ROS writer (v1 = DA ch7) and the ROS reader
-and the new system (v1 = DA ch5); which one matches the physical polarization
-is not known. This test answers it directly. With the LO on, the biases are
+Written when the names v1 and h2 were in doubt (ROS launch: v1 = DA ch7; ROS
+reader and the new system: v1 = DA ch5). On 2026-10-23 it found DA ch6, ch7 on
+H and ch5, ch8 on V, so v1 = ch5 is physical (see device_config_ros.toml). With the LO on, the biases are
 set to the operating values; then each DA terminal in turn is set to 0 mV
 while the output level of all four IF bands is read. A terminal that feeds the
 H mixers changes HU and HL, one that feeds V changes VU and VL.
@@ -38,7 +38,7 @@ import numpy as np
 import rx_performance_common as tm
 
 HERE = pathlib.Path(__file__).resolve().parent
-IV_CONFIG = str(HERE / "device_config_iv_ros.toml")   # reader names: v1 = DA ch5
+IV_CONFIG = str(HERE / "device_config_iv_ros.toml")   # v1 = DA ch5
 
 
 def open_monitor(dry_run: bool):

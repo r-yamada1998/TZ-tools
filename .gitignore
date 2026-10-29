@@ -4,3 +4,23 @@
 
 # Mac OS
 .DS_Store
+
+# Python
+__pycache__/
+
+# Written next to the scripts by the measurements
+iv_*/
+probe_*/
+irr_measure_*/
+loatt_search_*/
+trx_map_*/
+yfactor_chopper_*/
+yfactor_hotcold_*/
+pol_test_*/
+settle_test_*/
+timing_test_*/
+if_switch_check_*.txt
+.loatt_last.json
+
+# The bias table of the map being measured (irr_points_example.csv shows the format)
+irr_points.csv
